@@ -253,7 +253,7 @@ export type ErrorMapper = (
 export interface ApplicationOptions {
   name?: string;
   /** Modules in topological import order. */
-  modules: CompiledModule[];
+  modules?: CompiledModule[];
   /** Platform-level dependencies (db client etc.), passed to createServices. */
   deps?: Record<string, unknown>;
   /** Builds the per-request context object. Defaults to { requestId, request }. */
@@ -811,7 +811,7 @@ export function createApplication(options: ApplicationOptions): Elysia {
   };
   const imported: Record<string, Record<string, unknown>> = {};
 
-  for (const module of options.modules) {
+  for (const module of options.modules ?? []) {
     const services = module.createServices(options.deps ?? {}, imported);
     imported[module.name] = services;
     app.use(createModulePlugin(module, services, ctxFactory, {

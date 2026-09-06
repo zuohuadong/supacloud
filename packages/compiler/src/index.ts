@@ -16,6 +16,14 @@ export type { DoctorResult } from "./inspect";
 export { validateGraph, COMPILER_DIAGNOSTIC_CODES } from "./validate";
 export { scanGeneratedArtifacts, scanProductionSource } from "./type-safety";
 export type { TypeSafetyScanOptions } from "./type-safety";
+export {
+  DEFAULT_SUPACLOUD_CONFIG,
+  compileOptionsFromConfig,
+  defineSupacloudConfig,
+  loadSupacloudConfig,
+  resolveSupacloudConfig,
+} from "./config";
+export type { SupaCloudConfig } from "./config";
 export { camelName } from "./util";
 export {
   ANGULAR_ENTERPRISE_RULES,
