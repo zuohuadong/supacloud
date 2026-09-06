@@ -139,3 +139,37 @@ depending on a `request` provider) at build time.
 
 `defineModule(options)` produces the same metadata as `@Module(options)` and
 can be used where decorators are not enabled.
+
+## Feature Slices and State Machines
+
+`defineFeatureSlice` is an explicit, colocated feature slice entrypoint. It compiles
+into a standard `ApplicationGraph` module without bypassing provider, route, command,
+or module-boundary governance rules:
+
+```ts
+import { defineFeatureSlice, defineFeatureSpec } from "@supacloud/app";
+
+export const caseSpec = defineFeatureSpec({
+  name: "case",
+  states: ["draft", "accepted", "rejected"],
+  transitions: {
+    accept: {
+      from: "draft",
+      to: "accepted",
+      permission: "case.accept",
+      command: "AcceptCaseCommand",
+    },
+  },
+});
+
+export const CaseFeature = defineFeatureSlice({
+  name: "case",
+  tags: ["type:feature", "scope:case"],
+  spec: caseSpec,
+  providers: [AcceptCaseCommand],
+  controllers: [CaseController],
+});
+```
+
+The compiler validates that feature states, commands, permissions, and transactions
+remain synchronized and detects architectural drift at build time.

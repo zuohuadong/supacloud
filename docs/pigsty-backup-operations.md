@@ -1,5 +1,7 @@
 # Pigsty Backup Operations
 
+[English](pigsty-backup-operations.md) | [简体中文](pigsty-backup-operations.zh-CN.md)
+
 SupaCloud uses Pigsty's PostgreSQL backup substrate. The platform does not
 replace pgBackRest or `pig pitr`; it validates their state and records the
 result as a SupaCloud readiness contract.
