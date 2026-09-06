@@ -66,6 +66,28 @@ SUPACLOUD_API_TOKEN=<production-management-api-token>
 SUPACLOUD_PROJECT_REF=production-ref
 ```
 
+CLI requests (including `status`) default to `SUPACLOUD_TLS_VERIFY=false`, skipping HTTPS certificate verification so that
+air-gapped installations using private or self-signed certificates work
+without extra configuration. To enable strict certificate verification, set:
+
+```dotenv
+SUPACLOUD_TLS_VERIFY=true
+```
+
+This setting only affects HTTPS requests made by the CLI transport. It does not
+change server-side SupaCloud, Caddy, Edge Runtime, or browser certificate
+verification. Keep the default only on trusted internal networks; use a
+trusted CA and `SUPACLOUD_TLS_VERIFY=true` for public or untrusted networks.
+The legacy inverse setting `SUPACLOUD_TLS_INSECURE=false` is also accepted.
+`SUPACLOUD_TLS_VERIFY` takes precedence if both are present. Both settings use
+the selected context source, not a mix of profile and process variables.
+Values accept `true/false`, `1/0`, `yes/no`, and `on/off` (case-insensitive).
+Invalid or empty values stop the command before requests are sent.
+Skipping verification accepts any certificate, not just a private CA, and
+removes server identity authentication. HTTPS encryption and redirect refusal
+remain enabled. Install your organization's CA and set verification to `true`
+where identity authentication is required.
+
 Run commands with the selected profile:
 
 ```bash

@@ -25,26 +25,39 @@ function writeEnvironment(workspace: string, filename: string, values: Record<st
 }
 
 describe("resolveSupaCloudContext", () => {
-    test("allows explicit insecure TLS only for non-production environments", () => {
+    test("defaults to insecure TLS for internal and production environments", () => {
         const context = resolveSupaCloudContext({
-            SUPACLOUD_ENV: "test",
+            SUPACLOUD_ENV: "production",
             SUPACLOUD_API_URL: "https://management.internal.example",
             SUPACLOUD_API_TOKEN: "token",
             SUPACLOUD_PROJECT_REF: "project-ref",
-            SUPACLOUD_TLS_INSECURE: "true",
         }, "/tmp/no-such-supacloud-context");
 
         expect(context.insecureTls).toBe(true);
     });
 
-    test("rejects insecure TLS for production environments", () => {
-        expect(() => resolveSupaCloudContext({
+    test("allows strict TLS when explicitly configured", () => {
+        const context = resolveSupaCloudContext({
             SUPACLOUD_ENV: "production",
             SUPACLOUD_API_URL: "https://management.example.com",
             SUPACLOUD_API_TOKEN: "token",
             SUPACLOUD_PROJECT_REF: "project-ref",
-            SUPACLOUD_TLS_INSECURE: "true",
-        }, "/tmp/no-such-supacloud-context")).toThrow("forbidden for production");
+            SUPACLOUD_TLS_VERIFY: "true",
+        }, "/tmp/no-such-supacloud-context");
+
+        expect(context.insecureTls).toBe(false);
+    });
+
+    test("supports the previous inverse-named setting for compatibility", () => {
+        const context = resolveSupaCloudContext({
+            SUPACLOUD_ENV: "test",
+            SUPACLOUD_API_URL: "https://management.internal.example",
+            SUPACLOUD_API_TOKEN: "token",
+            SUPACLOUD_PROJECT_REF: "project-ref",
+            SUPACLOUD_TLS_INSECURE: "false",
+        }, "/tmp/no-such-supacloud-context");
+
+        expect(context.insecureTls).toBe(false);
     });
 
     test("keeps custom project application credentials out of Management context", () => {

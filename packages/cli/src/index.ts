@@ -74,7 +74,7 @@ function failedEndpointProbe(error: unknown): EndpointProbe {
     return { reachable: false, ok: false, httpStatus: null, error: timedOut ? "timeout" : "unreachable" };
 }
 
-async function probeEndpoint(url: string, headers?: HeadersInit): Promise<EndpointProbe> {
+async function probeEndpoint(url: string, headers?: HeadersInit, insecureTls = false): Promise<EndpointProbe> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3_000);
     try {
@@ -82,6 +82,7 @@ async function probeEndpoint(url: string, headers?: HeadersInit): Promise<Endpoi
             method: "GET",
             headers,
             redirect: "error",
+            ...(new URL(url).protocol === "https:" ? { tls: { rejectUnauthorized: !insecureTls } } : {}),
             signal: controller.signal,
         });
         return successfulEndpointProbe(response);
@@ -172,13 +173,14 @@ async function collectProjectStatusChecks(context: ResolvedContext): Promise<Pro
     const missing = missingProjectContextFields(context);
     const probePlan = projectStatusProbePlan(context);
     const connectivity = probePlan.apiUrl
-        ? await probeEndpoint(`${probePlan.apiUrl}${probePlan.connectivityPath}`)
+        ? await probeEndpoint(`${probePlan.apiUrl}${probePlan.connectivityPath}`, undefined, context.insecureTls)
         : null;
     const connectivityOk = connectivityProbeIsHealthy(context.credentialScope, connectivity);
     const authentication = missing.length === 0 && connectivityOk
         ? await probeEndpoint(
             `${probePlan.apiUrl}${probePlan.authenticationPath}`,
             probePlan.authenticationHeaders,
+            context.insecureTls,
         )
         : null;
     return projectStatusChecks(missing, connectivity, authentication, connectivityOk);
