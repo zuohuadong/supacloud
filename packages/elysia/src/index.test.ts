@@ -168,6 +168,12 @@ function createApp(captured: Captured, options?: Partial<ApplicationOptions>) {
 // ---------------------------------------------------------------------------
 
 describe("createApplication", () => {
+  test("starts a minimal application with zero configuration", async () => {
+    const app = createApplication({});
+    const response = await app.handle(new Request("http://localhost/health"));
+    expect(response.status).toBe(404);
+  });
+
   test("serves GET and POST routes with JSON responses", async () => {
     const app = createApp({});
 

@@ -43,6 +43,7 @@ export function Module(_options: Record<string, unknown>) { return () => {}; }
 export function Command(_options: Record<string, unknown>) { return () => {}; }
 export function Query(_options: Record<string, unknown>) { return () => {}; }
 export function Controller(_path: string) { return () => {}; }
+export function Body() { return () => {}; }
 export function Get(_path: string, _options?: Record<string, unknown>) { return () => {}; }
 export function Post(_path: string, _options?: Record<string, unknown>) { return () => {}; }
 `;
@@ -106,13 +107,13 @@ export class AcceptCaseCommand {
 }
 `,
 
-    "src/features/case/case.controller.ts": `import { Controller, Get, Inject, Post } from "../../runtime";
+    "src/features/case/case.controller.ts": `import { Body, Controller, Get, Inject, Post } from "../../runtime";
 import { CaseService } from "./case.service";
 import { AcceptCaseCommand } from "./accept-case.command";
 
-const AcceptCaseBody = { type: "object" };
-const AcceptCaseParams = { type: "object" };
-const AcceptCaseQuery = { type: "object" };
+const AcceptCaseBody = { type: "object" } as const;
+const AcceptCaseParams = { type: "object" } as const;
+const AcceptCaseQuery = { type: "object" } as const;
 
 @Controller("/cases")
 export class CaseController {
@@ -129,7 +130,7 @@ export class CaseController {
     params: AcceptCaseParams,
     query: AcceptCaseQuery,
   })
-  accept(): { ok: boolean } {
+  accept(@Body() _body: unknown): { ok: boolean } {
     return { ok: true };
   }
 }
