@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.73.2](https://github.com/vibeunion/supacloud/compare/management-api-v0.73.1...management-api-v0.73.2) (2026-09-06)
+
+
+### Bug Fixes
+
+* **management-api:** degrade project detail status probe failures ([#1167](https://github.com/vibeunion/supacloud/issues/1167)) ([d1e9f50](https://github.com/vibeunion/supacloud/commit/d1e9f50aec32b2d8ceaf83ae1092ecf90e9fecbd))
+
 ## [0.73.1](https://github.com/vibeunion/supacloud/compare/management-api-v0.73.0...management-api-v0.73.1) (2026-09-05)
 
 
