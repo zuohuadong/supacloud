@@ -77,6 +77,14 @@ class CaseController {
   create(input: { body: { title: string } }) {
     return this.cases.create(input.body);
   }
+
+  invalidResponse() {
+    return { id: 42, title: "invalid" };
+  }
+
+  positional(id: string, title: string) {
+    return { id, title };
+  }
 }
 
 function createCaseModule(captured: Captured): CompiledModule {
@@ -122,6 +130,27 @@ function createCaseModule(captured: Captured): CompiledModule {
             body: t.Object({ title: t.String() }),
             response: t.Object({ id: t.String(), title: t.String() }),
             command: "CreateCaseCommand",
+          },
+          {
+            method: "GET",
+            path: "/invalid-response",
+            handler: "invalidResponse",
+            response: t.Object({ id: t.String(), title: t.String() }),
+          },
+          {
+            method: "GET",
+            path: "/positional/:id",
+            handler: "positional",
+            params: t.Object({ id: t.String() }),
+            query: t.Object({ title: t.String() }),
+            response: t.Object({ id: t.String(), title: t.String() }),
+            invoker: (controller, request) => {
+              const instance = controller as CaseController;
+              return instance.positional(
+                String(request.params?.id),
+                String(request.query?.title),
+              );
+            },
           },
         ],
       },
@@ -205,6 +234,24 @@ describe("createApplication", () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(422);
+  });
+
+  test("rejects invalid responses with 422 via Elysia response validation", async () => {
+    const app = createApp({});
+
+    const res = await testRequest(app, "/cases/invalid-response");
+    expect(res.status).toBe(422);
+  });
+
+  test("uses the compiler-emitted positional invoker after schema decoding", async () => {
+    const app = createApp({});
+
+    const res = await testRequest(app, "/cases/positional/42?title=hello");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "42", title: "hello" });
+
+    const invalid = await testRequest(app, "/cases/positional/42");
+    expect(invalid.status).toBe(422);
   });
 
   test("builds an isolated request scope per request", async () => {

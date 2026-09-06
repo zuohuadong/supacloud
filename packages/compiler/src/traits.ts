@@ -8,6 +8,7 @@ export type TraitKind =
   | "command"
   | "query"
   | "defineModule"
+  | "defineFeatureSlice"
   | "injectionToken";
 
 export interface TraitRecord {
@@ -153,6 +154,16 @@ function createDefaultTraitHandlers(): TraitHandler[] {
         if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name)) return undefined;
         const initializer = node.initializer;
         return initializer && ts.isCallExpression(initializer) && expressionName(initializer.expression) === "defineModule"
+          ? node.name.text
+          : undefined;
+      },
+    },
+    {
+      kind: "defineFeatureSlice",
+      detect: (node) => {
+        if (!ts.isVariableDeclaration(node) || !ts.isIdentifier(node.name)) return undefined;
+        const initializer = node.initializer;
+        return initializer && ts.isCallExpression(initializer) && expressionName(initializer.expression) === "defineFeatureSlice"
           ? node.name.text
           : undefined;
       },

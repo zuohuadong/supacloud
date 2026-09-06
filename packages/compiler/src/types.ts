@@ -49,7 +49,64 @@ export interface Diagnostic {
   errorCode?: string;
   /** Documentation URL for this diagnostic. */
   docsUrl?: string;
+  /** Machine-readable remediation that an agent or IDE can apply. */
+  fix?: DiagnosticFix;
 }
+
+/**
+ * Stable, semantic repair actions. These intentionally describe intent rather
+ * than raw text offsets so fixes remain valid after unrelated edits.
+ */
+export type DiagnosticFix =
+  | {
+      type: "add_module_import";
+      targetFile: string;
+      module: string;
+      provider?: string;
+      importPath?: string;
+      symbol?: string;
+      targetModule?: string;
+    }
+  | {
+      type: "add_provider";
+      targetFile: string;
+      token: string;
+      module: string;
+    }
+  | {
+      type: "mark_optional_dependency";
+      targetFile: string;
+      owner: string;
+      token: string;
+    }
+  | {
+      type: "change_provider_scope";
+      targetFile: string;
+      provider: string;
+      from: Scope;
+      to: Scope;
+    }
+  | {
+      type: "add_command_permission";
+      targetFile: string;
+      command: string;
+      module: string;
+      permission?: string;
+    }
+  | {
+      type: "add_route_parameter_binding";
+      targetFile: string;
+      controller: string;
+      route: string;
+      parameter: string;
+      binding: "param" | "query";
+    }
+  | {
+      type: "remove_route_body_binding";
+      targetFile: string;
+      controller: string;
+      route: string;
+    };
 
 export interface ProviderNode {
   /** Token name (InjectionToken variable name or class name). */
@@ -195,6 +252,26 @@ export interface QueryNode {
   name: string;
 }
 
+export interface FeatureTransitionNode {
+  name: string;
+  from: string;
+  to: string;
+  permission?: string;
+  command?: string;
+  route?: string;
+  transaction?: "required" | "none";
+  idempotency?: "required" | "none";
+  audit?: string;
+}
+
+export interface FeatureSpecNode {
+  name: string;
+  states: string[];
+  transitions: FeatureTransitionNode[];
+  file?: string;
+  line?: number;
+}
+
 export interface ModuleNode {
   /** Name from @Module({ name }) or defineModule. */
   name: string;
@@ -214,6 +291,7 @@ export interface ModuleNode {
   aspects?: AspectRefNode[];
   /** Exported token names. */
   exports: string[];
+  featureSpec?: FeatureSpecNode;
 }
 
 export interface ApplicationGraph {

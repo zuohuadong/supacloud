@@ -2,14 +2,17 @@ import type {
   ApplicationGraph,
   ControllerNode,
   Diagnostic,
+  DiagnosticFix,
   ModuleBoundaryRule,
   ModuleNode,
   ProviderNode,
   Scope,
   ValidateOptions,
 } from "./types";
+import { dirname, relative, sep } from "node:path";
 import { resolveModuleBoundaries } from "./profiles";
 import { findClosestMatch } from "./util";
+import { validateFeatureSpec } from "./feature";
 
 const SCOPE_LIFETIME_RANK: Record<Scope, number> = {
   application: 0,
@@ -42,6 +45,7 @@ export const COMPILER_DIAGNOSTIC_CODES: Record<string, { code: string; docsUrl: 
   "invalid-http-method-body": { code: "SC3004", docsUrl: "https://supacloud.dev/errors/SC3004" },
   "unmatched-route-parameter": { code: "SC3005", docsUrl: "https://supacloud.dev/errors/SC3005" },
   "missing-route-parameter-binding": { code: "SC3006", docsUrl: "https://supacloud.dev/errors/SC3006" },
+  "missing-path-param": { code: "SC3006", docsUrl: "https://supacloud.dev/errors/SC3006" },
   "duplicate-route": { code: "SC3007", docsUrl: "https://supacloud.dev/errors/SC3007" },
   "missing-body-schema": { code: "SC3008", docsUrl: "https://supacloud.dev/errors/SC3008" },
   "unused-route-schema": { code: "SC3009", docsUrl: "https://supacloud.dev/errors/SC3009" },
@@ -52,6 +56,7 @@ export const COMPILER_DIAGNOSTIC_CODES: Record<string, { code: string; docsUrl: 
   "unmatched-path-param-decorator": { code: "SC3014", docsUrl: "https://supacloud.dev/errors/SC3014" },
   "invalid-query-default-type": { code: "SC3015", docsUrl: "https://supacloud.dev/errors/SC3015" },
   "disallowed-body-on-get-delete": { code: "SC3016", docsUrl: "https://supacloud.dev/errors/SC3016" },
+  "invalid-body-binding": { code: "SC3016", docsUrl: "https://supacloud.dev/errors/SC3016" },
   "duplicate-query-param-binding": { code: "SC3017", docsUrl: "https://supacloud.dev/errors/SC3017" },
   "conflicting-route-method": { code: "SC3018", docsUrl: "https://supacloud.dev/errors/SC3018" },
   "missing-param-colon": { code: "SC3019", docsUrl: "https://supacloud.dev/errors/SC3019" },
@@ -68,6 +73,14 @@ export const COMPILER_DIAGNOSTIC_CODES: Record<string, { code: string; docsUrl: 
   "dynamic-aspect-reference": { code: "SC4010", docsUrl: "https://supacloud.dev/errors/SC4010" },
   "invalid-aspect-reference": { code: "SC4011", docsUrl: "https://supacloud.dev/errors/SC4011" },
   "unused-root-provider": { code: "SC5001", docsUrl: "https://supacloud.dev/errors/SC5001" },
+  "invalid-feature-states": { code: "SC6001", docsUrl: "https://supacloud.dev/errors/SC6001" },
+  "duplicate-feature-transition": { code: "SC6002", docsUrl: "https://supacloud.dev/errors/SC6002" },
+  "invalid-feature-transition": { code: "SC6003", docsUrl: "https://supacloud.dev/errors/SC6003" },
+  "feature-command-unresolved": { code: "SC6004", docsUrl: "https://supacloud.dev/errors/SC6004" },
+  "feature-governance-drift": { code: "SC6005", docsUrl: "https://supacloud.dev/errors/SC6005" },
+  "feature-route-unresolved": { code: "SC6006", docsUrl: "https://supacloud.dev/errors/SC6006" },
+  "feature-route-drift": { code: "SC6007", docsUrl: "https://supacloud.dev/errors/SC6007" },
+  "invalid-feature-spec": { code: "SC6008", docsUrl: "https://supacloud.dev/errors/SC6008" },
 };
 
 interface ProviderRef {
@@ -148,6 +161,7 @@ export function validateGraph(
     file?: string,
     line?: number,
     suggestion?: string,
+    fix?: DiagnosticFix,
   ): void => {
     const meta = COMPILER_DIAGNOSTIC_CODES[code];
     diagnostics.push({
@@ -159,6 +173,7 @@ export function validateGraph(
       suggestion,
       errorCode: meta?.code,
       docsUrl: meta?.docsUrl,
+      fix,
     });
   };
   const warn = (
@@ -167,6 +182,7 @@ export function validateGraph(
     file?: string,
     line?: number,
     suggestion?: string,
+    fix?: DiagnosticFix,
   ): void => {
     const meta = COMPILER_DIAGNOSTIC_CODES[code];
     diagnostics.push({
@@ -178,6 +194,7 @@ export function validateGraph(
       suggestion,
       errorCode: meta?.code,
       docsUrl: meta?.docsUrl,
+      fix,
     });
   };
 
@@ -187,6 +204,12 @@ export function validateGraph(
   const declaredRoutes: Array<{ method: string; path: string; fullPath: string; rawFullPath: string; controller: ControllerNode; module: ModuleNode; handler: string; redirectTo?: string }> = [];
 
   for (const module of graph.modules) {
+    if (module.featureSpec) {
+      for (const diagnostic of validateFeatureSpec(module.featureSpec, module)) {
+        const meta = COMPILER_DIAGNOSTIC_CODES[diagnostic.code];
+        diagnostics.push({ ...diagnostic, errorCode: meta?.code, docsUrl: meta?.docsUrl });
+      }
+    }
     const previousModule = modulesByName.get(module.name);
     if (previousModule) {
       error(
@@ -398,6 +421,14 @@ export function validateGraph(
                 controller.file,
                 undefined,
                 `Add @Param('${param}') to ${route.handler} arguments.`,
+                {
+                  type: "add_route_parameter_binding",
+                  targetFile: controller.file,
+                  controller: controller.className,
+                  route: route.handler,
+                  parameter: param,
+                  binding: "param",
+                },
               );
             }
           }
@@ -466,6 +497,12 @@ export function validateGraph(
             controller.file,
             undefined,
             `Use POST, PUT, or PATCH for routes accepting a request body, or bind parameters via @Query() / @Param().`,
+            {
+              type: "remove_route_body_binding",
+              targetFile: controller.file,
+              controller: controller.className,
+              route: route.handler,
+            },
           );
         }
         if (route.hasBodyBinding && (route.method === "GET" || route.method === "HEAD" || route.method === "OPTIONS")) {
@@ -475,6 +512,12 @@ export function validateGraph(
             controller.file,
             undefined,
             `Use POST, PUT, or PATCH for routes accepting a request body, or bind parameters via @Query() / @Param().`,
+            {
+              type: "remove_route_body_binding",
+              targetFile: controller.file,
+              controller: controller.className,
+              route: route.handler,
+            },
           );
         } else if (route.hasBodyBinding && !route.body) {
           warn(
@@ -706,6 +749,19 @@ export function validateGraph(
                 provider.file,
                 provider.line,
                 `Import module '${owner.module.name}' in '${module.name}', add '${dep}' to '${owner.module.name}' exports, or mark @Injectable({ providedIn: 'root' }).`,
+                {
+                  type: "add_module_import",
+                  targetFile: module.file,
+                  module: owner.module.name,
+                  provider: dep,
+                  symbol: owner.module.className,
+                  targetModule: module.name,
+                  importPath: (() => {
+                    const value = relative(dirname(module.file), owner.module.file)
+                      .replace(/\.(tsx?|mts|cts)$/, "").split(sep).join("/");
+                    return value.startsWith(".") ? value : `./${value}`;
+                  })(),
+                },
               );
             } else if (dep.includes("TOKEN") || dep.endsWith("Token") || (dep.length > 2 && dep === dep.toUpperCase())) {
               error(
@@ -722,6 +778,12 @@ export function validateGraph(
                 provider.file,
                 provider.line,
                 `Provide '${dep}' in a module, mark constructor parameter @Optional(), or define @Injectable({ providedIn: 'root' }).`,
+                {
+                  type: "add_provider",
+                  targetFile: module.file,
+                  token: dep,
+                  module: module.name,
+                },
               );
             }
           }
@@ -737,6 +799,13 @@ export function validateGraph(
             provider.file,
             provider.line,
             `Change provider '${provider.token}' scope to '${resolved.provider.scope}', or inject a factory/context instead.`,
+            {
+              type: "change_provider_scope",
+              targetFile: provider.file,
+              provider: provider.token,
+              from: provider.scope,
+              to: resolved.provider.scope,
+            },
           );
         }
       }
@@ -751,6 +820,14 @@ export function validateGraph(
           module.file,
           module.line,
           "Add 'permission: string' to @Command({ ... }) or configure command execution capabilities permission=false.",
+          {
+            type: "add_command_permission",
+            targetFile: module.providers.find((provider) =>
+              provider.useClass === command.className || provider.token === command.className)?.file ?? module.file,
+            command: command.className,
+            module: module.name,
+            permission: `${module.name}.${command.name}`,
+          },
         );
       }
 

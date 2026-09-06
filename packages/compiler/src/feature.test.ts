@@ -1,0 +1,73 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { analyzeProject } from "./analyze";
+import { generateFeatureSource, validateFeatureSpec } from "./feature";
+import type { FeatureSpecNode, ModuleNode } from "./types";
+
+const baseModule = (spec: FeatureSpecNode): ModuleNode => ({
+  name: "case",
+  className: "CaseModule",
+  file: "case.module.ts",
+  line: 1,
+  imports: [],
+  providers: [],
+  controllers: [{
+    className: "CaseController",
+    path: "/cases",
+    scope: "request",
+    deps: [],
+    routes: [{ method: "POST", path: "/:id/accept", handler: "accept", command: "AcceptCommand", pathParams: ["id"], paramBindings: ["id"] }],
+    file: "case.controller.ts",
+    importPath: "case.controller",
+  }],
+  commands: [{ className: "AcceptCommand", name: "case.accept", permission: "case.accept", transaction: "required", idempotency: "required" }],
+  queries: [],
+  exports: [],
+  featureSpec: spec,
+});
+
+describe("feature specs", () => {
+  test("lowers a colocated defineFeatureSlice into the application graph", async () => {
+    const root = await mkdtemp(join(tmpdir(), "supacloud-feature-"));
+    await writeFile(join(root, "feature.ts"), [
+      "const spec = defineFeatureSpec({",
+      '  name: "case", states: ["draft", "accepted"],',
+      '  transitions: { accept: { from: "draft", to: "accepted" } },',
+      "});",
+      "const CaseFeature = defineFeatureSlice({ name: \"case\", spec, tags: [\"type:feature\"] });",
+      "",
+    ].join("\n"), "utf8");
+    const graph = await analyzeProject(root);
+    expect(graph.modules).toHaveLength(1);
+    expect(graph.modules[0]?.tags).toEqual(["type:feature"]);
+    expect(graph.modules[0]?.featureSpec?.transitions[0]?.to).toBe("accepted");
+  });
+
+  test("detects state and governance drift", () => {
+    const spec: FeatureSpecNode = {
+      name: "case",
+      states: ["draft", "accepted"],
+      transitions: [{
+        name: "accept", from: "draft", to: "missing", command: "AcceptCommand",
+        permission: "case.wrong", transaction: "none",
+        route: "POST /cases/:id/accept",
+      }],
+    };
+    const codes = validateFeatureSpec(spec, baseModule(spec)).map((diagnostic) => diagnostic.code);
+    expect(codes).toEqual(["invalid-feature-transition", "feature-governance-drift", "feature-governance-drift"]);
+  });
+
+  test("generates an explicit command slice scaffold", () => {
+    const spec: FeatureSpecNode = {
+      name: "case",
+      states: ["draft", "accepted"],
+      transitions: [{ name: "accept", from: "draft", to: "accepted", permission: "case.accept" }],
+    };
+    const source = generateFeatureSource(spec);
+    expect(source).toContain("defineFeatureSlice");
+    expect(source).toContain("Transition1Command");
+    expect(source).toContain("Implement case.accept");
+  });
+});

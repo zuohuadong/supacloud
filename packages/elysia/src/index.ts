@@ -14,6 +14,17 @@ export interface CompiledRoute {
   params?: unknown;
   query?: unknown;
   response?: unknown;
+  /** Compiler-emitted positional invoker; used when available. */
+  invoker?: (
+    controller: unknown,
+    request: {
+      params?: Record<string, unknown>;
+      query?: Record<string, unknown>;
+      body?: unknown;
+      headers?: Record<string, unknown>;
+      context?: unknown;
+    },
+  ) => Promise<unknown> | unknown;
   /** Class name of the @Command explicitly bound to this route. */
   command?: string;
   /** Statically generated route aspects. */
@@ -104,7 +115,7 @@ export interface CommandInvocation {
   command: CompiledCommand;
   input: {
     body: unknown;
-    params: Record<string, string>;
+    params: Record<string, unknown>;
     query: Record<string, unknown>;
   };
   request: Request;
@@ -471,7 +482,7 @@ function joinPaths(prefix: string, path: string): string {
 
 interface HttpContext {
   body: unknown;
-  params: Record<string, string>;
+  params: Record<string, unknown>;
   query: Record<string, unknown>;
   request: Request;
   scope?: Record<string, unknown>;
@@ -582,11 +593,15 @@ export function createModulePlugin(
           body: ctx.body,
           params: ctx.params,
           query: ctx.query,
+          headers: Object.fromEntries(ctx.request.headers.entries()),
+          context: requestContext,
           request: ctx.request,
           scope: requestScope,
           requestContext,
         };
-        const invoke = () => Reflect.apply(method, instance, [input]);
+        const invoke = () => route.invoker
+          ? route.invoker(instance, input)
+          : Reflect.apply(method, instance, [input]);
         const routeContext: ApplicationAspectContext = {
           kind: "route",
           name: `${route.method} ${path}`,
@@ -828,3 +843,17 @@ export function createApplication(options: ApplicationOptions): Elysia {
 export function createTestApp(options: ApplicationOptions): Elysia {
   return createApplication(options);
 }
+
+export {
+  createMemorySandbox,
+} from "./memory";
+export type {
+  HandleLike as MemoryHandleLike,
+  MemoryDatabase,
+  MemorySandbox,
+  MemorySandboxOptions,
+  MemoryStorage,
+  MemoryStorageObject,
+} from "./memory";
+export { createMemoryPolicy } from "./memory_policy";
+export type { MemoryPolicy } from "./memory_policy";
