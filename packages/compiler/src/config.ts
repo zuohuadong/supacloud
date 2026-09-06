@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { CompileOptions, ModuleBoundaryPresetName } from "./types";
+import type {
+  CommandExecutionCapabilities,
+  CompileOptions,
+  ModuleBoundaryPresetName,
+} from "./types";
 
 export interface SupaCloudConfig {
   root?: string;
@@ -11,10 +15,14 @@ export interface SupaCloudConfig {
   generateClient?: boolean;
   generatePermissions?: boolean;
   moduleBoundaryPreset?: ModuleBoundaryPresetName;
+  commandCapabilities?: CommandExecutionCapabilities;
   treeShakeUnusedProviders?: boolean;
 }
 
-export const DEFAULT_SUPACLOUD_CONFIG: Required<Omit<SupaCloudConfig, "include" | "moduleBoundaryPreset">> & {
+export const DEFAULT_SUPACLOUD_CONFIG: Required<Omit<
+  SupaCloudConfig,
+  "include" | "moduleBoundaryPreset" | "commandCapabilities"
+>> & {
   include: string[];
   moduleBoundaryPreset: ModuleBoundaryPresetName;
 } = {
@@ -47,6 +55,7 @@ export function resolveSupacloudConfig(
   generateClient: boolean;
   generatePermissions: boolean;
   moduleBoundaryPreset: ModuleBoundaryPresetName;
+  commandCapabilities?: CommandExecutionCapabilities;
   treeShakeUnusedProviders: boolean;
 } {
   const resolved = defineSupacloudConfig(config);
@@ -58,6 +67,7 @@ export function resolveSupacloudConfig(
     generateClient: resolved.generateClient ?? DEFAULT_SUPACLOUD_CONFIG.generateClient,
     generatePermissions: resolved.generatePermissions ?? DEFAULT_SUPACLOUD_CONFIG.generatePermissions,
     moduleBoundaryPreset: resolved.moduleBoundaryPreset ?? DEFAULT_SUPACLOUD_CONFIG.moduleBoundaryPreset,
+    commandCapabilities: resolved.commandCapabilities,
     treeShakeUnusedProviders: resolved.treeShakeUnusedProviders ?? DEFAULT_SUPACLOUD_CONFIG.treeShakeUnusedProviders,
   };
 }
@@ -90,6 +100,7 @@ export function compileOptionsFromConfig(
     generateClient: resolved.generateClient,
     generatePermissions: resolved.generatePermissions,
     moduleBoundaryPreset: resolved.moduleBoundaryPreset,
+    commandCapabilities: resolved.commandCapabilities,
     treeShakeUnusedProviders: resolved.treeShakeUnusedProviders,
   };
 }

@@ -44,11 +44,19 @@ export default defineSupacloudConfig({
   generateClient: true,
   generatePermissions: true,
   moduleBoundaryPreset: "modular-monolith",
+  commandCapabilities: {
+    permission: true,
+    audit: true,
+    idempotency: true,
+    transaction: true,
+  },
 });
 ```
 
 命令行参数优先级高于配置文件。`--no-strict`、`--no-client` 和
 `--no-permissions` 只建议用于本地迁移或调试；生产 CI 应保留默认 strict。
+`commandCapabilities` 用于声明运行时实际支持的命令治理能力；命令声明了
+`permission`、`audit` 或 `idempotency` 时，若对应能力关闭，编译器会失败。
 
 ## API
 
