@@ -158,9 +158,9 @@ describe('trusted review workflow', () => {
       }
       if (contents === releaseWorkflow) {
         assert.deepEqual(lockfileGenerationLines, [
-          '            bun install --lockfile-only --registry https://registry.npmjs.org',
-          '            bun install --lockfile-only --registry https://registry.npmjs.org',
-          '            bun install --lockfile-only --registry https://registry.npmjs.org',
+          '          bun install --lockfile-only --registry https://registry.npmjs.org',
+          '          bun install --lockfile-only --registry https://registry.npmjs.org',
+          '          bun install --lockfile-only --registry https://registry.npmjs.org',
         ]);
       } else {
         assert.deepEqual(lockfileGenerationLines, []);
