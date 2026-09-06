@@ -1,5 +1,7 @@
 # Enterprise Architecture Readiness
 
+[English](enterprise-architecture-readiness.md) | [简体中文](enterprise-architecture-readiness.zh-CN.md)
+
 > Status: baseline contract
 > Updated: 2026-09-07
 

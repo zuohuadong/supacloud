@@ -23,6 +23,9 @@
 - **自动扩缩容**: 基于负载指标的垂直提升与水平副本扩展
 - **Bun Edge Runtime**: 基于 Bun.js + Elysia Worker Pool，内置 Deno 兼容层以兼容旧函数代码
 - **SSE 实时日志**: 基于 Server-Sent Events 的实时日志流，`journalctl --follow` 推送
+- **无状态 AI 运维 MCP**: 基于 Streamable HTTP MCP 协议的服务端（`POST /mcp`、`POST /mcp/projects/:ref`），仅计划写入策略，集成 pgBackRest 备份验证、Prometheus 请求指标与非执行 PITR 恢复计划
+- **可观测性与请求追踪**: 默认 VictoriaLogs + 进程内采集器（无 Logflare），Prometheus `/metrics` 指标端点，分布式请求追踪头（`x-request-id`、`x-supacloud-trace-id`、`x-supacloud-correlation-id`），以及 Grafana 反向代理子路径
+- **应用开发框架与编译器**: `@supacloud/compiler` 静态编译与零反射工厂，`@supacloud/app` Angular 风格 DI 元数据，`@supacloud/elysia` 高性能运行时，内置位置入参绑定与确定性内存测试沙箱
 - **原生异步队列**: 基于 PostgreSQL LISTEN/NOTIFY 的零依赖高并发调度底座，支持 AI 大模型任务与 MQTT 消息队列
 - **WebSocket 任务通知**: 基于 Bun 原生 WebSocket 的实时任务进度推送
 - **DB 优雅降级**: 指数退避重试 + 503 Service Unavailable，PostgreSQL 短暂不可用时不丢请求
@@ -300,9 +303,25 @@ supacloud-cli database query --ref <ref> --file ./queries/vector-search.sql
 supacloud-cli database push_migrations --ref <ref> --dir supabase/migrations --dry_run
 supacloud-cli auth list_providers --ref <ref>
 supacloud-cli frontend list --ref <ref>
+supacloud-cli frontend list_releases --ref <ref> --id <deployment-id>
+supacloud-cli frontend upload_release --ref <ref> --id <deployment-id> --zip_path ./dist.zip
+supacloud-cli frontend activate_release --ref <ref> --id <deployment-id> \
+  --release_id <sha256> --expected_active_release_id <sha256-or-absent> \
+  --expected_activation_id <uuid-v4-or-absent> --mutation_id <uuid-v4>
 supacloud-cli edge_functions list --ref <ref>
+supacloud-cli edge_functions source --ref <ref> --slug hello --version 1 --output ./hello-v1.ts
+supacloud-cli edge_functions deploy --ref <ref> --slug hello --path ./supabase/functions/hello --expected-active-version absent
+supacloud-cli edge_functions deploy --ref <ref> --slug hello --prebundled-path ./dist/hello.js --expected-sha256 <sha256> --expected-active-version 1
+supacloud-cli edge_functions deploy_bundle --ref <ref> --slug supauth --bundle-dir ./artifacts/supacloud-app/function-bundle --entrypoint index.ts --expected-active-version 1 --expected-activation-id <uuid>
+supacloud-cli edge_functions activate --ref <ref> --slug hello --version 2 --expected-active-version 3
 supacloud-cli storage list_buckets --ref <ref>
 ```
+
+不可变前端上传以流式方式直接传输文件，并严格绑定压缩包的 SHA-256。激活操作使用来自 `frontend list_releases` 的 release 与 activation CAS（Compare-And-Swap）值，并在激活后执行权威回读。现有的 Git 与传统 ZIP 部署方式依然可用。
+
+云函数 deploy 与 activate 命令要求传入通过 `edge_functions list` 观察到的活跃版本；`absent` 仅对全新 slug 有效。陈旧并发变更会返回 HTTP 409，成功变更会输出 `supacloud.cli.release-control.v1` 回执。当观察到的版本大于 0 时，可传给 `edge_functions source --version <N>` 以进行不可变、防 ABA 问题的源码备份。
+当发布流水线需要上传已构建好、无需服务端二次打包的产物时，使用 `deploy --prebundled-path` 并指定小写 `--expected-sha256`。该模式在激活前会严格校验调用方哈希、文件稳定性、UTF-8 编码与运行时策略。
+本地构建、自包含的多文件云函数目录可使用 `deploy_bundle --bundle-dir` 部署。CLI 在调用 Management API 前只读取普通 UTF-8 文件，并主动拦截 `node_modules`、`.git`、AppleDouble 隐藏文件、符号链接及特殊设备文件，因此目标宿主机无需源码仓库与外部包安装环境。
 
 复杂 SQL、pgvector 查询、单请求事务块建议使用 `--file`，不要依赖 shell 字符串转义。
 
@@ -398,6 +417,11 @@ curl http://localhost:9090/v1/projects/<ref>/api-keys \
 | GET | `/v1/projects/:ref/types/typescript` | 自动生成 TypeScript 类型 |
 | PATCH | `/v1/projects/:ref/config/auth` | 自定义鉴权及三方 OAuth |
 | GET | `/v1/projects/:ref/secrets` | 管理 Edge Functions Secrets |
+| GET | `/metrics` | Prometheus 文本格式指标（配置 `SUPACLOUD_METRICS_TOKEN` 时需要 Bearer Token） |
+| POST | `/mcp` | 无状态 MCP AI 运维端点（平台管理员） |
+| POST | `/mcp/projects/:ref` | 无状态 MCP AI 运维端点（项目级客户端） |
+| GET | `/v1/projects/:ref/database/backups` | 查询 Pigsty 物理备份与就绪状态 |
+| POST | `/v1/platform/backups/restore` | 集群级数据库 PITR 恢复到目标时间点 |
 
 `/v1/projects/:ref/functions*` 下的函数管理读取接口需要 project service role 或 admin 鉴权。公开函数调用仍走 `/functions/v1/*`，继续使用标准 Supabase 函数鉴权模型。
 
@@ -492,6 +516,20 @@ Caddy 网关 (Admin API 驱动):
 - `sdk-proxy` 根据函数配置决定异步入队并返回 `202 Accepted`，或同步转发到 Bun Edge Runtime
 - 浏览器和 `supabase-js` 调用方继续使用标准 `functions.invoke()`
 
+这为 SupaCloud 提供了稳定的统一控制面，用于处理：
+
+- 异步入队
+- 重试与超时默认策略
+- 幂等性控制
+- 请求信封（envelope）捕获
+- 单函数级别的后台路由策略
+
+为保持与 `supabase-js` 兼容，前台同步调用继续使用：
+
+```ts
+await supabase.functions.invoke("my-function", { body: {...} })
+```
+
 后台执行通过服务端函数配置 `background_routes` 开启。对 `/generate/crop`、`/generate/matting`、`/generate/video` 这类耗时路径，推荐使用 `background_routes`，避免依赖浏览器自定义请求头。
 
 ### Realtime 路由与恢复
@@ -502,6 +540,11 @@ Realtime 流量也先进入 Management API：
 - Management API 负责 websocket upgrade 并代理到上游 Realtime
 - Caddy 不应把浏览器 websocket 流量直接指向 Elixir Realtime 容器
 
+这样可以避免租户与路径错位问题，例如：
+
+- `/realtime/v1/websocket` 被错误重写为上游 `/socket` 路径
+- 浏览器 websocket 请求被识别为错误的租户
+
 安装或迁移后如果 Realtime 订阅异常，可以运行：
 
 ```bash
@@ -509,6 +552,15 @@ cd packages/management-api
 bun run realtime:reconcile
 bun run realtime:reconcile-schema
 ```
+
+这些命令用于：
+
+- 补齐遗漏注册的 Realtime 租户
+- 修复租户连接元数据
+- 在项目数据库中授予必需的 `realtime` schema 权限
+- 将 `public.tasks` 添加到 `supabase_realtime` 发布中并设置 `REPLICA IDENTITY FULL`
+
+新安装时，`install.sh` 会自动生成合法的 `REALTIME_DB_ENC_KEY`，避免租户注册时出现历史上的 `Bad key size` 错误。
 
 ### PostgREST 运行时生命周期
 
@@ -530,6 +582,68 @@ desired state 保存在项目专用元数据列里（`postgrest_desired`、`post
 - Management、Web Console 与外置 Edge Runtime 的受校验事务使用 `npx @supacloud/admin ssh upgrade --version <management-version> --edge_runtime_version <edge-version>`
 - `/usr/local/bin/supacloud` 仍是活动服务端二进制，但所有受支持的升级都必须通过 Admin。受保护的离线升级使用 Admin 已验证的本地产物传输，并由它执行认证后的目标 runner；不能手工执行 bundle runner，也不能让已安装的旧版本执行目标版本事务
 
+
+### AI 运维与可观测性
+
+SupaCloud 提供内置的企业级可观测性与可选的客户侧 AI 运维接口：
+
+#### 无状态 AI 运维 MCP
+
+任何支持 Streamable HTTP 的 MCP 客户端均可连接并以严格的安全边界管理与审查平台状态：
+
+- **平台管理员端点**: `POST /mcp`（需要平台管理员凭据）
+- **项目级端点**: `POST /mcp/projects/{project_ref}`（限定在项目凭据范围内）
+- **协议版本**: `2025-06-18`，传输格式为基于 `application/json` 的 JSON-RPC
+- **状态模型**: 完全无状态。无 `Mcp-Session-Id`，无服务端对话历史，返回 `Cache-Control: no-store`
+- **写入策略**: 仅生成计划（plan-only）。大模型无法通过 MCP 执行任意 Shell 命令、获取数据库明文密码或直接变更数据库状态。
+
+可用工具：
+
+- `supacloud.get_capabilities`: 获取机器可读的能力清单、作用域、工具集与写入策略
+- `supacloud.get_backup_readiness`: 读取 Pigsty/pgBackRest 清单中的已完成备份与 PITR 状态
+- `supacloud.get_request_metrics`: 获取 Prometheus 进程本地请求量、延迟与错误指标
+- `supacloud.plan_pitr_restore`: 生成非执行状态的 PITR 恢复计划，要求显式人工确认字符串
+
+可用资源：
+
+- `supacloud://capabilities`
+- `supacloud://project/{project_ref}/backups`
+- `supacloud://project/{project_ref}/metrics`
+
+详见 [docs/mcp-ai-operations.zh-CN.md](docs/mcp-ai-operations.zh-CN.md) ([English](docs/mcp-ai-operations.md)) 与 [docs/mcp-ai-operations-test-requirements.md](docs/mcp-ai-operations-test-requirements.md) ([English](docs/mcp-ai-operations-test-requirements.en.md))。
+
+#### 请求追踪与 Prometheus 指标
+
+Management API 为每个 HTTP 请求注入并回写标准化的分布式追踪标识：
+
+- `x-request-id`: 单次请求唯一 UUID
+- `x-supacloud-trace-id`: 跨组件分布式 Trace ID；支持承接并向下游传递 W3C `traceparent` 请求头
+- `x-supacloud-correlation-id`: 业务流程或长事务工作流关联标识
+
+Prometheus 指标端点为 `GET /metrics`，输出标准 exposition 文本。配置 `SUPACLOUD_METRICS_TOKEN` 后需要 Bearer Token 鉴权。耗时超过 1000ms 的慢请求会自动记录结构化告警日志。
+
+详见 [docs/observability.md](docs/observability.md) ([English](docs/observability.en.md)) 了解 VictoriaLogs 基线与 Grafana 子路径配置。
+
+#### Pigsty 备份运维与容灾恢复
+
+SupaCloud 深度集成 Pigsty 的 pgBackRest 物理备份底座：
+
+- 通过 `backup_manager.sh verify` 自动化校验 stanza 与备份仓库就绪度
+- 失败关闭（fail-closed）原则：只有在备份实际存在且可读时才判定为 ready
+- 两阶段 PITR 恢复：先生成计划，再通过带显式确认字符串（`RESTORE_CLUSTER:<timestamp>`）的接口执行
+- 恢复后执行包含 Caddy、PostgREST、GoTrue、Edge Runtime 与 pgredis 的全组件健康回读
+
+详见 [docs/pigsty-backup-operations.zh-CN.md](docs/pigsty-backup-operations.zh-CN.md) ([English](docs/pigsty-backup-operations.md)) 与 [docs/enterprise-architecture-readiness.zh-CN.md](docs/enterprise-architecture-readiness.zh-CN.md) ([English](docs/enterprise-architecture-readiness.md))。
+
+#### 应用开发框架与编译器
+
+现代 SupaCloud 应用推荐使用静态编译与编译期依赖注入：
+
+- `@supacloud/compiler`: 零反射静态代码生成、严格校验、可执行机器修复（`--fix`）以及按需提取模块上下文包（`supacloud-compiler context case --json`）
+- `@supacloud/app`: Angular 风格的声明式模块、InjectionToken、Controller、Command 以及业务状态机切片（`defineFeatureSlice`）
+- `@supacloud/elysia`: 高性能 Edge 运行时，支持位置参数绑定，以及用于单元测试的确定性内存沙箱
+
+详见 [docs/application-framework.md](docs/application-framework.md) 与 [docs/application-architecture.md](docs/application-architecture.md)。
 
 ### 项目结构
 
@@ -612,7 +726,11 @@ supacloud/
 
 ### 参考文档
 
-- [文档索引](docs/README.md)
+- [文档中心（中文索引）](docs/README.zh-CN.md) ([English](docs/README.md))
+- [可选 AI 运维 MCP 服务](docs/mcp-ai-operations.zh-CN.md) ([English](docs/mcp-ai-operations.md))
+- [Pigsty 备份与恢复运维](docs/pigsty-backup-operations.zh-CN.md) ([English](docs/pigsty-backup-operations.md))
+- [企业级架构就绪度](docs/enterprise-architecture-readiness.zh-CN.md) ([English](docs/enterprise-architecture-readiness.md))
+- [可观测性与日志基线](docs/observability.md) ([English](docs/observability.en.md))
 - [部署指南](docs/deploy-guide.md)
 - [多租户架构设计](docs/architecture-multi-tenant.md)
 - [OAuth 2.1 / OIDC Provider](docs/oauth-oidc-provider.md)
