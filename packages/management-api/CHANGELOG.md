@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.0](https://github.com/vibeunion/supacloud/compare/management-api-v0.73.2...management-api-v0.74.0) (2026-09-06)
+
+
+### Features
+
+* **management-api:** add generic release control contract ([#1180](https://github.com/vibeunion/supacloud/issues/1180)) ([0759b6b](https://github.com/vibeunion/supacloud/commit/0759b6b7175b24f2a676c8a632f2f94704b828de))
+
 ## [0.73.2](https://github.com/vibeunion/supacloud/compare/management-api-v0.73.1...management-api-v0.73.2) (2026-09-06)
 
 
