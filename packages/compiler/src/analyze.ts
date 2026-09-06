@@ -12,6 +12,8 @@ import type {
   Diagnostic,
   HandlerParamNode,
   FunctionalInjectNode,
+  FeatureSpecNode,
+  FeatureTransitionNode,
   JobNode,
   ModuleNode,
   ProviderNode,
@@ -75,6 +77,7 @@ interface AnalysisContext {
   checker: ts.TypeChecker;
   tokensByName: Map<string, TokenInfo>;
   classesByName: Map<string, ClassInfo>;
+  variablesByName: Map<string, VariableDeclaration>;
   diagnostics: Diagnostic[];
 }
 
@@ -171,6 +174,7 @@ export async function analyzeProject(
     checker,
     tokensByName: new Map(),
     classesByName: new Map(),
+    variablesByName: new Map(),
     diagnostics: [],
   };
   const nativeTraitFiles = new Map<string, Set<string>>();
@@ -213,9 +217,9 @@ export async function analyzeProject(
         });
       }
     }
-    if (!cache || traits?.has("defineModule")) {
+    if (!cache || traits?.has("defineModule") || traits?.has("defineFeatureSlice")) {
       for (const call of descendantsOfKind<CallExpression>(sf, ts.isCallExpression)) {
-        if (nodeText(call.expression) !== "defineModule") continue;
+        if (!["defineModule", "defineFeatureSlice"].includes(nodeText(call.expression))) continue;
         const parent = call.parent;
         if (!parent || !ts.isVariableDeclaration(parent)) continue;
         const arg = call.arguments[0];
@@ -559,6 +563,9 @@ function indexFile(sf: SourceFile, ctx: AnalysisContext): void {
   }
   for (const statement of sf.statements.filter(ts.isVariableStatement)) {
     for (const decl of statement.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name) && !ctx.variablesByName.has(decl.name.text)) {
+        ctx.variablesByName.set(decl.name.text, decl);
+      }
       const info = parseTokenVariable(decl, sf.fileName);
       if (info && !ctx.tokensByName.has(info.name)) {
         ctx.tokensByName.set(info.name, info);
@@ -601,6 +608,7 @@ function parseModule(
 ): ModuleNode {
   const { options, className, file, line } = candidate;
   const name = nameByNode.get(candidate.node) ?? className;
+  const featureSpec = parseFeatureSpec(getProp(options, "spec"), ctx);
 
   const tags = arrayProp(options, "tags")
     .map((el) => (ts.isStringLiteral(el) ? el.text : nodeText(el).replace(/['"]/g, "")))
@@ -802,7 +810,77 @@ function parseModule(
     queries,
     ...(aspects.length > 0 ? { aspects } : {}),
     exports,
+    ...(featureSpec ? { featureSpec } : {}),
   };
+}
+
+function parseFeatureSpec(
+  input: Expression | undefined,
+  ctx: AnalysisContext,
+  seen = new Set<ts.Node>(),
+): FeatureSpecNode | undefined {
+  if (!input) return undefined;
+  if (seen.has(input)) return undefined;
+  seen.add(input);
+  if (ts.isIdentifier(input)) {
+    const local = input.getSourceFile().statements.flatMap((statement) =>
+      ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : []);
+    const resolved = resolveDeclaration(input, ctx)[0];
+    const decl = (resolved && ts.isVariableDeclaration(resolved) ? resolved : undefined) ??
+      ctx.variablesByName.get(input.text) ??
+      local.find((candidate) => ts.isIdentifier(candidate.name) && candidate.name.text === input.text) ??
+      descendantsOfKind<VariableDeclaration>(input.getSourceFile(), ts.isVariableDeclaration)
+        .find((candidate) => ts.isIdentifier(candidate.name) && candidate.name.text === input.text);
+    if (decl && ts.isVariableDeclaration(decl)) return parseFeatureSpec(decl.initializer, ctx, seen);
+  }
+  if (ts.isCallExpression(input) && nodeText(input.expression) === "defineFeatureSpec") {
+    return parseFeatureSpec(input.arguments[0], ctx, seen);
+  }
+  if (ts.isAsExpression(input) || ts.isSatisfiesExpression(input) || ts.isParenthesizedExpression(input)) {
+    return parseFeatureSpec(input.expression, ctx, seen);
+  }
+  const invalid = (): undefined => {
+    ctx.diagnostics.push({
+      severity: "error", code: "invalid-feature-spec",
+      message: "Feature spec must use static name, states and transition objects.",
+      file: sourcePath(ctx.rootDir, input.getSourceFile().fileName), line: lineOf(input),
+    });
+    return undefined;
+  };
+  if (!ts.isObjectLiteralExpression(input)) return invalid();
+  const name = stringLiteralProp(input, "name");
+  const statesExpr = getProp(input, "states");
+  const transitionObject = getProp(input, "transitions");
+  if (!name || !statesExpr || !ts.isArrayLiteralExpression(statesExpr) ||
+    statesExpr.elements.some((state) => !ts.isStringLiteral(state)) ||
+    !transitionObject || !ts.isObjectLiteralExpression(transitionObject) ||
+    input.properties.some((property) => !ts.isPropertyAssignment(property))) {
+    return invalid();
+  }
+  const states = statesExpr.elements.map((state) => (state as ts.StringLiteral).text);
+  const transitions: FeatureTransitionNode[] = [];
+  for (const property of transitionObject.properties) {
+    if (!ts.isPropertyAssignment(property) || ts.isComputedPropertyName(property.name) ||
+      !ts.isObjectLiteralExpression(property.initializer)) return invalid();
+    const options = property.initializer;
+    const from = stringLiteralProp(options, "from");
+    const to = stringLiteralProp(options, "to");
+    if (!from || !to || options.properties.some((prop) => !ts.isPropertyAssignment(prop)) ||
+      ["permission", "command", "route", "audit"].some((key) => getProp(options, key) && !stringLiteralProp(options, key)) ||
+      ["transaction", "idempotency"].some((key) => getProp(options, key) && !commandModeProp(options, key))) {
+      return invalid();
+    }
+    transitions.push({
+      name: propertyName(property.name), from, to,
+      permission: stringLiteralProp(options, "permission"),
+      command: stringLiteralProp(options, "command"),
+      route: stringLiteralProp(options, "route"),
+      transaction: commandModeProp(options, "transaction"),
+      idempotency: commandModeProp(options, "idempotency"),
+      audit: stringLiteralProp(options, "audit"),
+    });
+  }
+  return { name, states, transitions, file: sourcePath(ctx.rootDir, input.getSourceFile().fileName), line: lineOf(input) };
 }
 
 function commandModeProp(

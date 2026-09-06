@@ -117,7 +117,12 @@ export type {
   RouteOptions,
   RouteParamBinding,
 } from "./decorators";
-export { defineModule } from "./module";
+export { defineFeatureSlice, defineFeatureSpec, defineModule } from "./module";
+export type {
+  FeatureSliceOptions,
+  FeatureSpecOptions,
+  FeatureTransitionOptions,
+} from "./module";
 export {
   APP_INITIALIZER,
   DB_CLIENT,

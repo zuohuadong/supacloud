@@ -1,7 +1,17 @@
 export { analyzeProject } from "./analyze";
+export { generateFeatureSource, validateFeatureSpec } from "./feature";
+export { applyDiagnosticFix } from "./fixes";
+export type { AppliedDiagnosticFix, ApplyDiagnosticFixOptions } from "./fixes";
 export { checkProject, compileProject } from "./compile";
 export { watchProject } from "./watch";
-export { doctorProject, explainGraph, formatGraph, exportGraphDot, exportGraphMermaid } from "./inspect";
+export {
+  createContextPack,
+  doctorProject,
+  explainGraph,
+  formatGraph,
+  exportGraphDot,
+  exportGraphMermaid,
+} from "./inspect";
 export { createIncrementalCompiler } from "./incremental";
 export { createDependencyGraphCache } from "./incremental";
 export { ModuleDependencyGraph } from "./incremental";
@@ -12,7 +22,7 @@ export { TraitCompiler } from "./traits";
 export type { TraitCompilation, TraitHandler, TraitKind, TraitRecord } from "./traits";
 export { generateApplication, renderApplication } from "./generate";
 export type { GenerateOptions, RenderedArtifacts } from "./generate";
-export type { DoctorResult } from "./inspect";
+export type { ContextPack, DoctorResult } from "./inspect";
 export { validateGraph, COMPILER_DIAGNOSTIC_CODES } from "./validate";
 export { scanGeneratedArtifacts, scanProductionSource } from "./type-safety";
 export type { TypeSafetyScanOptions } from "./type-safety";
@@ -48,6 +58,7 @@ export type {
   DependencyGraphCache,
   DependencyGraphIndex,
   Diagnostic,
+  DiagnosticFix,
   ModuleBoundaryPresetName,
   ModuleBoundaryProfile,
   ModuleBoundaryRule,
@@ -64,4 +75,6 @@ export type {
   WatchEvent,
   WatchHandle,
   WatchOptions,
+  FeatureSpecNode,
+  FeatureTransitionNode,
 } from "./types";

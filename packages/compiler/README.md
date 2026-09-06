@@ -98,10 +98,47 @@ const diagnostics = validateGraph(graph, /* strict */ false);
 
 ```ts
 interface ApplicationGraph {
-  modules: ModuleNode[];     // 模块：providers/controllers/commands/jobs/queries/aspects/exports/imports
+  modules: ModuleNode[];     // 模块：providers/controllers/commands/jobs/queries/aspects/exports/imports/featureSpec
   externalTokens: string[];  // 被依赖但无任何模块提供的 token（平台注入，如 DB_CLIENT、REQUEST_CONTEXT）
 }
 ```
+
+### Feature Spec 与垂直切片
+
+`defineFeatureSlice` 是显式的 colocated feature 入口；它仍然编译成普通
+`ApplicationGraph` 模块，不绕过 provider、route、command 或 module-boundary
+治理。`spec` 用状态机描述业务允许的迁移：
+
+```ts
+import { defineFeatureSlice, defineFeatureSpec } from "@supacloud/app";
+
+const caseSpec = defineFeatureSpec({
+  name: "case",
+  states: ["draft", "accepted", "rejected"],
+  transitions: {
+    accept: {
+      from: "draft",
+      to: "accepted",
+      permission: "case.accept",
+      command: "AcceptCaseCommand",
+    },
+  },
+});
+
+export const CaseFeature = defineFeatureSlice({
+  name: "case",
+  tags: ["type:feature", "scope:case"],
+  spec: caseSpec,
+  providers: [AcceptCaseCommand],
+  controllers: [CaseController],
+});
+```
+
+编译器会拒绝重复状态/迁移、未知状态、找不到 command/route，以及
+permission、transaction、idempotency、audit 与 command 元数据不一致。
+`generateFeatureSource(spec)` 只生成带显式失败占位的可编辑 command slice；
+它不会伪造持久化实现。`app.manifest.json` 保留 `featureSpec`，便于 CI、
+IDE 和 AI agent 做状态机漂移检查。
 
 详见 `src/types.ts`。provider 的 scope 解析顺序：provider 对象显式 `scope` > `@Injectable({ scope })` > InjectionToken 定义处的 `{ scope }` 选项 > `application`。deps 解析顺序：对象 provider 的 `deps` 数组 > `@Injectable({ deps })` > 构造函数 `@Inject(token)` 参数装饰器 > 构造函数参数类型名（仅当引用已知 token/类，否则 warn `missing-deps`）。
 
@@ -149,6 +186,7 @@ interface ApplicationGraph {
 | `source-type-assertion` | warn（strict 时 error） | 生产源码使用 `as T` 或 `<T>value` 类型断言 |
 | `source-non-null-assertion` | warn（strict 时 error） | 生产源码使用非空断言 `value!` |
 | `source-implicit-widening` | warn（strict 时 error） | 可静态判定的字面量类型隐式宽化 |
+| `invalid-feature-transition` / `feature-governance-drift` | error | Feature 状态、command、权限或事务契约发生漂移 |
 
 依赖的 token 全图都无 provider 时不报错，记入 `externalTokens`（平台注入）。
 
@@ -179,6 +217,30 @@ supacloud-compiler doctor ./app
 ```
 
 `graph` 输出模块拓扑和平台注入 token；`explain` 解释模块、provider 或 external token 的来源与依赖；`doctor` 检查项目结构、模块发现、生成物漂移和编译诊断。加 `--json` 可供 IDE、脚本和 CI 消费结构化结果。
+
+AI Agent 可以只读取目标模块的上下文包，而不需要扫描整个项目：
+
+```bash
+supacloud-compiler context case --root ./app --json
+```
+
+上下文包包含目标模块、直接和间接上下游模块、相关源码文件、路由/Command/provider
+图谱以及实际引用的平台 token。`compile --json` 和 `check --json` 会返回稳定的
+`ok`、`diagnostics`、`written`/`mismatches` 字段；可修复的诊断还会包含机器可消费的
+`fix`，例如 `add_module_import`、`add_command_permission` 和
+`add_route_parameter_binding`。这些 fix 描述语义操作，不是脆弱的文本偏移。
+可执行 fix 使用 `applyDiagnosticFix(fix, { dryRun: true })` 预览，或通过
+`supacloud-compiler fix ./fix.json --dry-run` 调用；CLI 默认预览，需显式
+使用 `--write` 才写盘。写盘前会重新解析 AST，
+前置条件不满足时拒绝修改，并通过临时文件原子替换。
+
+## 编译基准
+
+使用 `bun run benchmark` 运行固定 fixture 基准，输出 cold compile、增量
+compile、依赖失效耗时、重用/重析模块和生成产物字节数。基准是本地证据，
+不是跨机器性能承诺；2026-09-06 当前 fixture 的一次结果约为：
+`175.76ms` 冷编译、`18.88ms` 相同输入增量、`16.77ms` 单依赖失效、
+`9329` bytes。
 
 ## 开发
 

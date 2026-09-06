@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeProject } from "./analyze";
 import { checkProject, compileProject } from "./compile";
-import { doctorProject, explainGraph, exportGraphDot, exportGraphMermaid, formatGraph } from "./inspect";
+import {
+  createContextPack,
+  doctorProject,
+  explainGraph,
+  exportGraphDot,
+  exportGraphMermaid,
+  formatGraph,
+} from "./inspect";
 import { GOOD_PROJECT_FILES } from "./fixtures/good-project";
 import { writeFixtureProject } from "./fixtures/helpers";
 import type { ApplicationGraph } from "./types";
@@ -36,6 +43,16 @@ describe("compiler inspection", () => {
 
   test("explainGraph 对未知对象给出可操作的 known names", () => {
     expect(() => explainGraph(graph, "missing")).toThrow(/Known names:/);
+  });
+
+  test("createContextPack 提取目标模块及其上下游上下文", () => {
+    const pack = createContextPack(graph, "case");
+    expect(pack.version).toBe(1);
+    expect(pack.subject).toBe("case");
+    expect(pack.modules.map((module) => module.name)).toEqual(["audit", "case"]);
+    expect(pack.files).toContain("src/features/case/case.module.ts");
+    expect(pack.externalTokens).toContain("DB_CLIENT");
+    expect(pack.relatedModules.imports).toEqual(["audit"]);
   });
 
   test("doctorProject 汇总生成物、模块和诊断状态", async () => {

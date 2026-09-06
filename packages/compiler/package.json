@@ -27,6 +27,7 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
     "test": "bun test",
+    "benchmark": "bun run src/benchmark.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit"
   },

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { analyzeProject } from "./analyze";
 import { checkProject, compileProject } from "./compile";
-import { doctorProject, explainGraph, formatGraph } from "./inspect";
+import { createContextPack, doctorProject, explainGraph, formatGraph } from "./inspect";
 import { watchProject } from "./watch";
 import type { Diagnostic, ModuleBoundaryPresetName } from "./types";
 import { compileOptionsFromConfig, loadSupacloudConfig, resolveSupacloudConfig } from "./config";
+import { applyDiagnosticFix } from "./fixes";
 
 function isModuleBoundaryPresetName(value: string | undefined): value is ModuleBoundaryPresetName {
   return value === "modular-monolith"
@@ -27,7 +29,9 @@ Usage:
   supacloud-compiler dev     [rootDir] [options]
   supacloud-compiler graph   [rootDir] [options]
   supacloud-compiler explain <name> [rootDir] [options]
+  supacloud-compiler context <module> [rootDir] [options]
   supacloud-compiler doctor  [rootDir] [options]
+  supacloud-compiler fix     <fix.json> [options]
 
 Commands:
   compile             Compile application modules and generate artifacts
@@ -35,6 +39,7 @@ Commands:
   dev                 Watch source files and recompile on changes
   graph               Print the discovered application graph
   explain             Explain a module, provider, or external token
+  context             Extract an AI-sized module context pack
   doctor              Run project and generated-artifact health checks
 
 Options:
@@ -47,7 +52,9 @@ Options:
   --permissions       Generate typed permissions registry (default)
   --no-permissions    Do not generate permissions.ts
   --debounce <ms>     Debounce source changes in dev mode (default: 100)
-  --json              Print machine-readable output for graph/explain/doctor
+  --json              Print machine-readable output for compile/check/graph/explain/context/doctor
+  --dry-run           Preview a fix without writing the target file
+  --write             Apply a fix to disk (fix is preview-only by default)
   --preset, -p <name> Architecture preset ('modular-monolith' | 'angular-enterprise' | 'clean-architecture')
   --help, -h          Show this help
 `);
@@ -61,7 +68,7 @@ async function run(): Promise<void> {
   }
 
   const command = args[0];
-  if (!["compile", "check", "dev", "graph", "explain", "doctor"].includes(command)) {
+  if (!["compile", "check", "dev", "graph", "explain", "context", "doctor", "fix"].includes(command)) {
     console.error(`Error: unknown command "${command}"`);
     printUsage();
     process.exit(1);
@@ -76,6 +83,7 @@ async function run(): Promise<void> {
   let debounceMs: number = 100;
   let query: string | undefined;
   let json: boolean = false;
+  let dryRun = true;
 
   for (let i: number = 1; i < args.length; i++) {
     const arg = args[i];
@@ -103,6 +111,10 @@ async function run(): Promise<void> {
       }
     } else if (arg === "--json") {
       json = true;
+    } else if (arg === "--dry-run") {
+      dryRun = true;
+    } else if (arg === "--write") {
+      dryRun = false;
     } else if (arg === "--preset" || arg === "-p") {
       const presetArg = args[++i];
       if (!isModuleBoundaryPresetName(presetArg)) {
@@ -111,9 +123,9 @@ async function run(): Promise<void> {
       }
       preset = presetArg;
     } else if (!arg.startsWith("-") && !rootDir) {
-      if (command === "explain" && !query) query = arg;
+      if ((command === "explain" || command === "context" || command === "fix") && !query) query = arg;
       else rootDir = arg;
-    } else if (!arg.startsWith("-") && command === "explain" && !query) {
+    } else if (!arg.startsWith("-") && (command === "explain" || command === "context" || command === "fix") && !query) {
       query = arg;
     }
   }
@@ -135,39 +147,64 @@ async function run(): Promise<void> {
     moduleBoundaryPreset: preset ?? configured.moduleBoundaryPreset,
   };
 
-  if (command === "compile") {
+  if (command === "fix") {
+    if (!query) throw new Error("fix requires a JSON file containing one DiagnosticFix");
+    const fix = JSON.parse(await readFile(resolve(process.cwd(), query), "utf8"));
+    const result = await applyDiagnosticFix(fix, { rootDir: process.cwd(), dryRun });
+    console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+  } else if (command === "compile") {
     const result = await compileProject(compileDefaults);
 
-    printDiagnostics(result.diagnostics);
-
     const errors = result.diagnostics.filter((d) => d.severity === "error");
+    if (json) {
+      console.log(JSON.stringify({
+        ok: errors.length === 0,
+        diagnostics: result.diagnostics,
+        written: result.written,
+        stats: result.stats,
+      }, null, 2));
+    } else {
+      printDiagnostics(result.diagnostics);
+    }
     if (errors.length > 0) {
-      console.error(`\nCompilation failed with ${errors.length} error(s).`);
+      if (!json) console.error(`\nCompilation failed with ${errors.length} error(s).`);
       process.exit(1);
     }
 
-    console.log(`\nCompilation succeeded. Generated artifacts:\n${result.written.map((f) => `  - ${f}`).join("\n")}`);
+    if (!json) {
+      console.log(`\nCompilation succeeded. Generated artifacts:\n${result.written.map((f) => `  - ${f}`).join("\n")}`);
+    }
   } else if (command === "check") {
     const result = await checkProject(compileDefaults);
 
-    printDiagnostics(result.diagnostics);
-
     const errors = result.diagnostics.filter((d) => d.severity === "error");
+    if (json) {
+      console.log(JSON.stringify({
+        ok: errors.length === 0 && result.upToDate,
+        upToDate: result.upToDate,
+        mismatches: result.mismatches,
+        diagnostics: result.diagnostics,
+      }, null, 2));
+    } else {
+      printDiagnostics(result.diagnostics);
+    }
     if (errors.length > 0) {
-      console.error(`\nGovernance checks failed with ${errors.length} error(s).`);
+      if (!json) console.error(`\nGovernance checks failed with ${errors.length} error(s).`);
       process.exit(1);
     }
 
     if (!result.upToDate) {
-      console.error("\nArtifact drift detected:");
-      for (const mismatch of result.mismatches) {
-        console.error(`  - ${mismatch}`);
+      if (!json) {
+        console.error("\nArtifact drift detected:");
+        for (const mismatch of result.mismatches) {
+          console.error(`  - ${mismatch}`);
+        }
+        console.error("Run the compile command and commit the updated generated artifacts.");
       }
-      console.error("Run the compile command and commit the updated generated artifacts.");
       process.exit(1);
     }
 
-    console.log("Artifact check passed: disk files match compiler output with no drift.");
+    if (!json) console.log("Artifact check passed: disk files match compiler output with no drift.");
   } else if (command === "dev") {
     const handle = watchProject({
       ...compileDefaults,
@@ -214,6 +251,37 @@ async function run(): Promise<void> {
       else console.log(explanation);
     } catch (error) {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
+  } else if (command === "context") {
+    if (!query) {
+      console.error("Error: context requires a module name");
+      process.exit(1);
+    }
+    try {
+      const graph = await analyzeProject(resolvedRoot);
+      const pack = createContextPack(graph, query);
+      if (json) {
+        console.log(JSON.stringify(pack, null, 2));
+      } else {
+        console.log([
+          `CONTEXT ${pack.subject}`,
+          `  modules: ${pack.modules.map((module) => module.name).join(", ") || "-"}`,
+          `  files: ${pack.files.join(", ") || "-"}`,
+          `  external tokens: ${pack.externalTokens.join(", ") || "-"}`,
+          `  imports: ${pack.relatedModules.imports.join(", ") || "-"}`,
+          `  imported by: ${pack.relatedModules.importedBy.join(", ") || "-"}`,
+        ].join("\n"));
+      }
+    } catch (error) {
+      if (json) {
+        console.log(JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }, null, 2));
+      } else {
+        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      }
       process.exit(1);
     }
   } else {

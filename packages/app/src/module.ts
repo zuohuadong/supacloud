@@ -2,6 +2,30 @@ import { Module } from "./decorators";
 import type { ModuleOptions } from "./decorators";
 import type { Type } from "./provider";
 
+export interface FeatureTransitionOptions {
+  from: string;
+  to: string;
+  permission?: string;
+  command?: string;
+  route?: string;
+  transaction?: "required" | "none";
+  idempotency?: "required" | "none";
+  audit?: string;
+}
+
+export interface FeatureSpecOptions {
+  name: string;
+  states: readonly string[];
+  transitions: Readonly<Record<string, FeatureTransitionOptions>>;
+}
+
+export interface FeatureSliceOptions extends ModuleOptions {
+  spec?: FeatureSpecOptions;
+}
+
+export const FEATURE_SPEC_METADATA = "supacloud:feature-spec";
+export const FEATURE_SLICE_METADATA = "supacloud:feature-slice";
+
 /**
  * Functional equivalent of the `@Module()` decorator for codebases that do
  * not enable `experimentalDecorators`. Returns a class carrying the same
@@ -15,4 +39,23 @@ export function defineModule(options: ModuleOptions): Type<unknown> {
   });
   Module(options)(DefinedModule);
   return DefinedModule;
+}
+
+export function defineFeatureSpec<const T extends FeatureSpecOptions>(options: T): T {
+  return options;
+}
+
+export function defineFeatureSlice(options: FeatureSliceOptions): Type<unknown> {
+  const module = defineModule(options);
+  Object.defineProperty(module, FEATURE_SLICE_METADATA, {
+    value: options,
+    configurable: true,
+  });
+  if (options.spec) {
+    Object.defineProperty(module, FEATURE_SPEC_METADATA, {
+      value: options.spec,
+      configurable: true,
+    });
+  }
+  return module;
 }

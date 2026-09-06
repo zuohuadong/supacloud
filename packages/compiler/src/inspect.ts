@@ -2,6 +2,18 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ApplicationGraph, Diagnostic, ModuleNode, ProviderNode } from "./types";
 
+export interface ContextPack {
+  version: 1;
+  subject: string;
+  modules: ModuleNode[];
+  files: string[];
+  externalTokens: string[];
+  relatedModules: {
+    importedBy: string[];
+    imports: string[];
+  };
+}
+
 export interface DoctorResult {
   checks: Array<{ name: string; ok: boolean; detail: string }>;
   diagnostics: ApplicationGraph["diagnostics"];
@@ -43,6 +55,71 @@ export function explainGraph(graph: ApplicationGraph, subject: string): string {
 
   const known = [...graph.modules.map((item) => item.name), ...graph.externalTokens].sort();
   throw new Error(`No module, provider, or external token named "${subject}". Known names: ${known.join(", ") || "(none)"}`);
+}
+
+/**
+ * Extracts the smallest graph neighborhood that is useful for an agent
+ * editing one feature: the subject module, its imports, and its dependents.
+ */
+export function createContextPack(graph: ApplicationGraph, subject: string): ContextPack {
+  const subjectModule = graph.modules.find((module) => module.name === subject);
+  if (!subjectModule) {
+    throw new Error(`No module named "${subject}". Context packs require a module name.`);
+  }
+
+  const byName = new Map(graph.modules.map((module) => [module.name, module]));
+  const selected = new Set<string>([subjectModule.name]);
+  const queue = [subjectModule.name];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    const module = byName.get(current);
+    if (!module) continue;
+    const neighbors = [
+      ...module.imports,
+      ...graph.modules
+        .filter((candidate) => candidate.imports.includes(module.name))
+        .map((candidate) => candidate.name),
+    ];
+    for (const neighbor of neighbors) {
+      if (!selected.has(neighbor) && byName.has(neighbor)) {
+        selected.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  const modules = graph.modules.filter((module) => selected.has(module.name));
+  const files = [...new Set(modules.flatMap((module) => [
+    module.file,
+    ...module.providers.map((provider) => provider.file),
+    ...module.controllers.map((controller) => controller.file),
+  ]))].sort();
+  const referencedTokens = new Set<string>();
+  for (const module of modules) {
+    for (const provider of module.providers) {
+      for (const token of provider.deps) referencedTokens.add(token);
+    }
+    for (const controller of module.controllers) {
+      for (const token of controller.deps) referencedTokens.add(token);
+    }
+  }
+
+  return {
+    version: 1,
+    subject: subjectModule.name,
+    modules,
+    files,
+    externalTokens: graph.externalTokens.filter((token) => referencedTokens.has(token)),
+    relatedModules: {
+      imports: subjectModule.imports.filter((name) => selected.has(name)),
+      importedBy: graph.modules
+        .filter((module) => module.imports.includes(subjectModule.name))
+        .map((module) => module.name)
+        .sort(),
+    },
+  };
 }
 
 export function doctorProject(

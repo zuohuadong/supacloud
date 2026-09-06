@@ -58,6 +58,15 @@ describe("validateGraph：坏 fixture 诊断", () => {
     expect(boundaries[0].line).toBe(
       lineOf(BAD_PROJECT_FILES["src/boundary.ts"], "marker:module-boundary"),
     );
+    expect(boundaries[0].fix).toEqual({
+      type: "add_module_import",
+      targetFile: "src/boundary.ts",
+      module: "hidden",
+      provider: "HIDDEN_TOKEN",
+      importPath: "./boundary",
+      symbol: "HiddenModule",
+      targetModule: "boundary",
+    });
   });
 
   test("duplicate-token：同模块重复注册", () => {
@@ -81,6 +90,13 @@ describe("validateGraph：坏 fixture 诊断", () => {
       (d) => d.code === "command-missing-permission",
     );
     expect(strictDiagnostics[0].severity).toBe("error");
+    expect(missing[0].fix).toEqual({
+      type: "add_command_permission",
+      targetFile: "src/misc.ts",
+      command: "NoPermCommand",
+      module: "misc",
+      permission: "misc.bad.noperm",
+    });
   });
 
   test("missing-deps：构造参数类型无法解析为已知 token/类", () => {
