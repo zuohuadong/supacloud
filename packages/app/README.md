@@ -8,6 +8,28 @@ SupaCloud compiler (`@supacloud/compiler`) reads that metadata from source,
 validates the dependency graph and generates plain static factories — there is
 no runtime reflection and no `reflect-metadata` dependency.
 
+## Zero-configuration start
+
+The smallest application can contain only a controller:
+
+```ts
+import { Controller, Get } from "@supacloud/app";
+
+@Controller("/health")
+export class HealthController {
+  @Get("/ping")
+  ping() {
+    return { ok: true };
+  }
+}
+```
+
+Run `bunx supacloud-compiler compile` from the project root. The compiler
+discovers the controller under `src/`, writes artifacts to `generated/`, and
+enables strict checks by default. A module, provider, database client, or
+command governance configuration is only needed when the application uses
+that capability.
+
 Runtime DI delegates to Angular's public `@angular/core` APIs through a small
 compatibility adapter. SupaCloud decorators retain module/compiler metadata,
 while production application factories remain compiler-generated and

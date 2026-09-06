@@ -5,6 +5,7 @@ import { checkProject, compileProject } from "./compile";
 import { doctorProject, explainGraph, formatGraph } from "./inspect";
 import { watchProject } from "./watch";
 import type { Diagnostic, ModuleBoundaryPresetName } from "./types";
+import { compileOptionsFromConfig, loadSupacloudConfig, resolveSupacloudConfig } from "./config";
 
 function isModuleBoundaryPresetName(value: string | undefined): value is ModuleBoundaryPresetName {
   return value === "modular-monolith"
@@ -37,11 +38,14 @@ Commands:
   doctor              Run project and generated-artifact health checks
 
 Options:
-  --root, -r <dir>    Application source root (default: current directory or first positional argument)
-  --out, -o <dir>     Artifact output directory (default: <rootDir>/generated)
-  --strict            Enable type-safety gates and treat all warnings as errors
-  --client            Generate typed API client in client.ts
-  --permissions       Generate typed permissions registry in permissions.ts
+  --root, -r <dir>    Application source root (default: ./src, or first positional argument)
+  --out, -o <dir>     Artifact output directory (default: ./generated)
+  --strict            Enable type-safety gates and treat all warnings as errors (default)
+  --no-strict         Disable strict diagnostics (local migration escape hatch)
+  --client            Generate typed API client in client.ts (default)
+  --no-client         Do not generate client.ts
+  --permissions       Generate typed permissions registry (default)
+  --no-permissions    Do not generate permissions.ts
   --debounce <ms>     Debounce source changes in dev mode (default: 100)
   --json              Print machine-readable output for graph/explain/doctor
   --preset, -p <name> Architecture preset ('modular-monolith' | 'angular-enterprise' | 'clean-architecture')
@@ -63,11 +67,11 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  let rootDir: string = ".";
+  let rootDir: string | undefined;
   let outDir: string | undefined;
-  let strict: boolean = false;
-  let generateClient: boolean = false;
-  let generatePermissions: boolean = false;
+  let strict: boolean | undefined;
+  let generateClient: boolean | undefined;
+  let generatePermissions: boolean | undefined;
   let preset: ModuleBoundaryPresetName | undefined;
   let debounceMs: number = 100;
   let query: string | undefined;
@@ -81,10 +85,16 @@ async function run(): Promise<void> {
       outDir = args[++i];
     } else if (arg === "--strict") {
       strict = true;
+    } else if (arg === "--no-strict") {
+      strict = false;
     } else if (arg === "--client") {
       generateClient = true;
+    } else if (arg === "--no-client") {
+      generateClient = false;
     } else if (arg === "--permissions") {
       generatePermissions = true;
+    } else if (arg === "--no-permissions") {
+      generatePermissions = false;
     } else if (arg === "--debounce") {
       debounceMs = Number(args[++i]);
       if (!Number.isFinite(debounceMs) || debounceMs < 0) {
@@ -100,7 +110,7 @@ async function run(): Promise<void> {
         process.exit(1);
       }
       preset = presetArg;
-    } else if (!arg.startsWith("-") && rootDir === ".") {
+    } else if (!arg.startsWith("-") && !rootDir) {
       if (command === "explain" && !query) query = arg;
       else rootDir = arg;
     } else if (!arg.startsWith("-") && command === "explain" && !query) {
@@ -108,18 +118,25 @@ async function run(): Promise<void> {
     }
   }
 
-  const resolvedRoot = resolve(process.cwd(), rootDir);
-  const resolvedOut = outDir ? resolve(process.cwd(), outDir) : resolve(resolvedRoot, "generated");
+  const loadedConfig = await loadSupacloudConfig(process.cwd());
+  const defaults = resolveSupacloudConfig(loadedConfig, process.cwd());
+  const resolvedRoot = rootDir ? resolve(process.cwd(), rootDir) : defaults.rootDir;
+  const resolvedOut = outDir ? resolve(process.cwd(), outDir) : defaults.outDir;
+  const configured = compileOptionsFromConfig({
+    ...loadedConfig,
+    root: resolvedRoot,
+    outDir: resolvedOut,
+    strict: strict ?? loadedConfig.strict,
+    generateClient: generateClient ?? loadedConfig.generateClient,
+    generatePermissions: generatePermissions ?? loadedConfig.generatePermissions,
+  }, process.cwd());
+  const compileDefaults = {
+    ...configured,
+    moduleBoundaryPreset: preset ?? configured.moduleBoundaryPreset,
+  };
 
   if (command === "compile") {
-    const result = await compileProject({
-      rootDir: resolvedRoot,
-      outDir: resolvedOut,
-      strict,
-      moduleBoundaryPreset: preset,
-      generateClient,
-      generatePermissions,
-    });
+    const result = await compileProject(compileDefaults);
 
     printDiagnostics(result.diagnostics);
 
@@ -131,14 +148,7 @@ async function run(): Promise<void> {
 
     console.log(`\nCompilation succeeded. Generated artifacts:\n${result.written.map((f) => `  - ${f}`).join("\n")}`);
   } else if (command === "check") {
-    const result = await checkProject({
-      rootDir: resolvedRoot,
-      outDir: resolvedOut,
-      strict,
-      moduleBoundaryPreset: preset,
-      generateClient,
-      generatePermissions,
-    });
+    const result = await checkProject(compileDefaults);
 
     printDiagnostics(result.diagnostics);
 
@@ -160,13 +170,8 @@ async function run(): Promise<void> {
     console.log("Artifact check passed: disk files match compiler output with no drift.");
   } else if (command === "dev") {
     const handle = watchProject({
-      rootDir: resolvedRoot,
-      outDir: resolvedOut,
-      strict,
-      moduleBoundaryPreset: preset,
+      ...compileDefaults,
       debounceMs,
-      generateClient,
-      generatePermissions,
       onEvent: (event) => {
         if (event.type === "compile-start") {
           console.log(event.initial ? "\nInitial compilation..." : "\nSource change detected; compiling...");
@@ -212,12 +217,7 @@ async function run(): Promise<void> {
       process.exit(1);
     }
   } else {
-    const result = await checkProject({
-      rootDir: resolvedRoot,
-      outDir: resolvedOut,
-      strict,
-      moduleBoundaryPreset: preset,
-    });
+    const result = await checkProject(compileDefaults);
     const doctor = doctorProject(resolvedRoot, resolvedOut, result.graph, result.upToDate, result.diagnostics);
     if (json) {
       console.log(JSON.stringify(doctor, null, 2));

@@ -4,7 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { Type } from "@sinclair/typebox";
 import {
     analyzeProject,
+    checkProject,
     compileProject,
+    compileOptionsFromConfig,
+    loadSupacloudConfig,
+    resolveSupacloudConfig,
     validateGraph,
     type Diagnostic,
     type ModuleNode,
@@ -176,12 +180,16 @@ function parseInclude(include: string | undefined): string[] | undefined {
 
 async function runCompile(args: AppToolArguments): Promise<ToolResult> {
     const root = resolve(args.root || process.cwd());
-    const outDir = resolve(args.out_dir || join(root, "generated"));
+    const loadedConfig = await loadSupacloudConfig(root);
+    const defaults = resolveSupacloudConfig(loadedConfig, root);
     const result = await compileProject({
-        rootDir: root,
-        include: parseInclude(args.include),
-        outDir,
-        strict: args.strict === true,
+        ...compileOptionsFromConfig({
+            ...loadedConfig,
+            root: args.root ? "." : loadedConfig.root,
+            outDir: args.out_dir ? resolve(root, args.out_dir) : defaults.outDir,
+            include: parseInclude(args.include) ?? loadedConfig.include,
+            strict: args.strict ?? loadedConfig.strict ?? false,
+        }, root),
     });
     const hasError = result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
     const text = [
@@ -195,12 +203,24 @@ async function runCompile(args: AppToolArguments): Promise<ToolResult> {
 
 async function runCheck(args: AppToolArguments): Promise<ToolResult> {
     const root = resolve(args.root || process.cwd());
-    const graph = await analyzeProject(root, parseInclude(args.include));
+    const loadedConfig = await loadSupacloudConfig(root);
+    const defaults = resolveSupacloudConfig(loadedConfig, root);
+    const config = compileOptionsFromConfig({
+        ...loadedConfig,
+        root: args.root ? "." : loadedConfig.root,
+        outDir: args.out_dir ? resolve(root, args.out_dir) : defaults.outDir,
+        include: parseInclude(args.include) ?? loadedConfig.include,
+        strict: args.strict ?? loadedConfig.strict ?? false,
+    }, root);
+    const graph = await analyzeProject(config.rootDir, config.include);
     const diagnostics: Diagnostic[] = [
         ...(graph.diagnostics ?? []),
-        ...validateGraph(graph, args.strict === true),
+        ...validateGraph(graph, {
+            strict: config.strict,
+            moduleBoundaryPreset: config.moduleBoundaryPreset,
+        }),
     ];
-    if (args.strict === true) {
+    if (config.strict) {
         for (const diagnostic of diagnostics) {
             if (diagnostic.severity === "warn") diagnostic.severity = "error";
         }

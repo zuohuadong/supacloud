@@ -10,6 +10,46 @@ SupaCloud 应用静态编译器：读取 `@supacloud/app` 装饰器元数据的�
 bun add @supacloud/compiler
 ```
 
+## 零配置项目
+
+在项目根目录执行：
+
+```bash
+bunx supacloud-compiler compile
+bunx supacloud-compiler dev
+```
+
+默认约定如下：
+
+| 配置 | 默认值 |
+| --- | --- |
+| 源码目录 | `src` |
+| 生成目录 | `generated` |
+| 文件发现 | `**/*.module.ts`、`**/*.ts` |
+| strict 类型安全门 | 开启 |
+| typed client | 开启 |
+| permissions manifest | 开启 |
+| module boundary preset | `modular-monolith` |
+| provider tree-shaking | 开启 |
+
+需要覆盖默认值时，在项目根目录添加 `supacloud.config.ts`：
+
+```ts
+import { defineSupacloudConfig } from "@supacloud/compiler";
+
+export default defineSupacloudConfig({
+  root: "src",
+  outDir: "generated",
+  strict: true,
+  generateClient: true,
+  generatePermissions: true,
+  moduleBoundaryPreset: "modular-monolith",
+});
+```
+
+命令行参数优先级高于配置文件。`--no-strict`、`--no-client` 和
+`--no-permissions` 只建议用于本地迁移或调试；生产 CI 应保留默认 strict。
+
 ## API
 
 ```ts
