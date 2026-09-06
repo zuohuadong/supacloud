@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/vibeunion/supacloud/compare/elysia-v0.5.1...elysia-v0.6.0) (2026-09-06)
+
+
+### Features
+
+* **app:** provide zero-config project defaults ([#1173](https://github.com/vibeunion/supacloud/issues/1173)) ([489824d](https://github.com/vibeunion/supacloud/commit/489824db5137e4675248cfc789d9d86e8139775e))
+
 ## [0.5.1](https://github.com/vibeunion/supacloud/compare/elysia-v0.5.0...elysia-v0.5.1) (2026-09-05)
 
 
