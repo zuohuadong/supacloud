@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vibeunion/supacloud/compare/compiler-v0.7.0...compiler-v0.8.0) (2026-09-06)
+
+
+### Features
+
+* **compiler:** configure command capabilities ([#1178](https://github.com/vibeunion/supacloud/issues/1178)) ([ccac0b6](https://github.com/vibeunion/supacloud/commit/ccac0b6b4fb709eca57de4fbcdc5b76109226976))
+
 ## [0.7.0](https://github.com/vibeunion/supacloud/compare/compiler-v0.6.2...compiler-v0.7.0) (2026-09-06)
 
 
