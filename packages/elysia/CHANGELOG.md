@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vibeunion/supacloud/compare/elysia-v0.6.0...elysia-v0.7.0) (2026-09-06)
+
+
+### Features
+
+* complete compiler runtime roadmap ([cb4618a](https://github.com/vibeunion/supacloud/commit/cb4618aef455853f7ad408f06d67004d49155ffb))
+
 ## [0.6.0](https://github.com/vibeunion/supacloud/compare/elysia-v0.5.1...elysia-v0.6.0) (2026-09-06)
 
 
