@@ -1,5 +1,7 @@
 # 可选 Grafana 的日志基线
 
+[简体中文](observability.md) | [English](observability.en.md)
+
 SupaCloud 的默认日志基线是 **VictoriaLogs + 内置采集器**。主机安装使用单个原生 systemd 服务；Docker Compose 部署使用固定版本的独立 VictoriaLogs 容器和持久卷。日志采集仍运行在既有的 SupaCloud 管理进程中，不新增 Vector、Logflare、Analytics 或日志采集容器。它独立于 PostgreSQL、Pigsty 和 Grafana。
 
 ```text

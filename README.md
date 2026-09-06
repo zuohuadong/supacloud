@@ -25,6 +25,9 @@ The English README is canonical. See the [translation policy](docs/translation-p
 - **Auto-scaling Engine**: Rule-based vertical and horizontal scaling based on real-time metrics
 - **Bun Edge Runtime**: Bun.js + Elysia Worker Pool for Edge Functions, with built-in Deno compatibility shim for legacy user code
 - **SSE Real-time Logs**: Server-Sent Events streaming for live log tailing via `journalctl --follow`
+- **Stateless AI Operations MCP**: Streamable HTTP MCP server (`POST /mcp`, `POST /mcp/projects/:ref`) with plan-only write policy, pgBackRest backup verification, Prometheus request metrics, and non-executing PITR restoration plans
+- **Observability & Request Correlation**: Default VictoriaLogs + in-process collector without Logflare, Prometheus `/metrics` endpoint with token protection, distributed tracing headers (`x-request-id`, `x-supacloud-trace-id`, `x-supacloud-correlation-id`), and Grafana reverse-proxy subpath
+- **Application Framework & Compiler**: `@supacloud/compiler` static compilation with zero-reflection factories, `@supacloud/app` Angular-style DI metadata, `@supacloud/elysia` runtime with positional invoker and deterministic in-memory sandboxing
 - **Native Queue Worker**: Pure Bun.js PostgreSQL LISTEN/NOTIFY based asynchronous worker for AI inference and MQTT events
 - **WebSocket Task Notifications**: Real-time task progress push via native Bun WebSocket
 - **DB Graceful Degradation**: Exponential backoff retry + 503 Service Unavailable on transient DB failures
@@ -305,7 +308,7 @@ python3 init-env.py --public-url https://api.example.com --studio-url https://st
 docker compose up -d --build
 ```
 
-The compose stack is isolated under [`docker/self-host`](/Volumes/Data/workspace/supacloud/docker/self-host) and ships a PostgreSQL 18 image with common extensions preinstalled.
+The compose stack is isolated under [`docker/self-host`](./docker/self-host) and ships a PostgreSQL 18 image with common extensions preinstalled.
 
 For the Docker-specific Pigsty 4.4/Supabase compatibility check and backup-first upgrade path, see [`docs/upgrade-postgres-docker-4.4.md`](./docs/upgrade-postgres-docker-4.4.md). Do not run the native Pigsty upgrade script against a Docker data volume.
 
@@ -472,6 +475,11 @@ curl http://localhost:9090/v1/projects/<ref>/api-keys \
 | GET | `/v1/projects/:ref/secrets` | List Edge Function Secrets |
 | POST | `/v1/projects/:ref/secrets` | Upsert Secrets |
 | DELETE | `/v1/projects/:ref/secrets/:name` | Delete Secret |
+| GET | `/metrics` | Prometheus metrics exposition (requires `SUPACLOUD_METRICS_TOKEN` if configured) |
+| POST | `/mcp` | Stateless MCP AI Operations endpoint (platform admin) |
+| POST | `/mcp/projects/:ref` | Stateless MCP AI Operations endpoint (project-scoped) |
+| GET | `/v1/projects/:ref/database/backups` | List Pigsty physical backups and readiness |
+| POST | `/v1/platform/backups/restore` | Restore database cluster to target point in time |
 
 Function management read endpoints under `/v1/projects/:ref/functions*` require project service-role or admin authentication. Public runtime invokes remain on `/functions/v1/*` and continue to use the normal Supabase function auth model.
 
@@ -642,6 +650,68 @@ For human operators, the CLI split is now:
 - `/usr/local/bin/supacloud` remains the active server binary, but all supported upgrades use Admin. Protected offline upgrades use Admin's verified local transport, which executes the authenticated target runner; do not run the bundle runner manually or let the installed prior release execute a target-specific transaction.
 
 
+### AI Operations & Observability
+
+SupaCloud provides built-in enterprise observability and an optional customer-facing AI operations surface:
+
+#### Stateless AI Operations MCP
+
+Connect any MCP client over Streamable HTTP to manage and inspect platform state with strict safety boundaries:
+
+- **Admin Endpoint**: `POST /mcp` (requires platform administrator credentials)
+- **Project Endpoint**: `POST /mcp/projects/{project_ref}` (scoped to project credentials)
+- **Protocol**: `2025-06-18` JSON-RPC over `application/json`
+- **Stateless Model**: No `Mcp-Session-Id`, no server-side conversation state, `Cache-Control: no-store`
+- **Write Policy**: Plan-only. Models cannot execute arbitrary shell commands, receive raw database credentials, or mutate database state directly.
+
+Available tools:
+
+- `supacloud.get_capabilities`: Machine-readable capabilities, scopes, tools, and write policy
+- `supacloud.get_backup_readiness`: Reads Pigsty/pgBackRest inventory for completed backups and PITR status
+- `supacloud.get_request_metrics`: Prometheus process-local request and error metrics
+- `supacloud.plan_pitr_restore`: Creates non-executing PITR restore plans requiring explicit human confirmation
+
+Available resources:
+
+- `supacloud://capabilities`
+- `supacloud://project/{project_ref}/backups`
+- `supacloud://project/{project_ref}/metrics`
+
+See [docs/mcp-ai-operations.md](docs/mcp-ai-operations.md) ([中文](docs/mcp-ai-operations.zh-CN.md)) and [docs/mcp-ai-operations-test-requirements.en.md](docs/mcp-ai-operations-test-requirements.en.md) ([中文](docs/mcp-ai-operations-test-requirements.md)).
+
+#### Request Tracing & Prometheus Metrics
+
+Management API injects and propagates standardized distributed tracing identifiers across all HTTP requests:
+
+- `x-request-id`: Unique identifier for each inbound request
+- `x-supacloud-trace-id`: Distributed trace ID; accepts and propagates W3C `traceparent` headers
+- `x-supacloud-correlation-id`: Business operation or workflow correlation identifier
+
+Prometheus metrics are available at `GET /metrics` in standard exposition format. Set `SUPACLOUD_METRICS_TOKEN` to enforce Bearer token authentication. Requests exceeding 1000ms emit structured slow-request warning logs.
+
+See [docs/observability.en.md](docs/observability.en.md) ([中文](docs/observability.md)) for VictoriaLogs baseline and Grafana subpath configuration.
+
+#### Pigsty Backup Operations & Disaster Recovery
+
+SupaCloud integrates with Pigsty's pgBackRest physical backup engine:
+
+- Automated stanza and repository readiness verification via `backup_manager.sh verify`
+- Fail-closed availability checks ensuring backups exist before declaring readiness
+- Two-phase PITR recovery: non-executing plan generation followed by explicit administrative confirmation (`RESTORE_CLUSTER:<timestamp>`)
+- Post-recovery component health read-back covering Caddy, PostgREST, GoTrue, Edge Runtime, and pgredis
+
+See [docs/pigsty-backup-operations.md](docs/pigsty-backup-operations.md) ([中文](docs/pigsty-backup-operations.zh-CN.md)) and [docs/enterprise-architecture-readiness.md](docs/enterprise-architecture-readiness.md) ([中文](docs/enterprise-architecture-readiness.zh-CN.md)).
+
+#### Application Framework & Compiler
+
+Modern SupaCloud applications use static compilation and compile-time DI:
+
+- `@supacloud/compiler`: Zero-reflection code generation, strict validation, actionable machine fixes (`--fix`), and targeted context packs (`supacloud-compiler context case --json`)
+- `@supacloud/app`: Angular-style declarative modules, injection tokens, controllers, commands, and feature slices (`defineFeatureSlice`)
+- `@supacloud/elysia`: High-performance Edge runtime with positional parameter binding and deterministic in-memory sandboxing for unit tests
+
+See [docs/application-framework.md](docs/application-framework.md) and [docs/application-architecture.md](docs/application-architecture.md).
+
 ### Project Structure
 
 ```
@@ -718,12 +788,16 @@ Key installation settings:
 | `EDGE_RUNTIME` | Functions runtime | `bun` |
 | `PG_VERSION` | PostgreSQL version | `18` |
 | `PIGSTY_VERSION` | Pigsty version | `v4.5.0` |
-| `SUPACLOUD_LOGS_ENABLED` | 内置采集器 + VictoriaLogs 项目日志（不使用 Logflare） | `true` |
+| `SUPACLOUD_LOGS_ENABLED` | Built-in collector + VictoriaLogs project logs (no Logflare) | `true` |
 | `SUPACLOUD_PIPELINES_ENABLED` | Pinned Supabase ETL runtime for BigQuery CDC Pipelines | `true` |
 
 ### Documentation
 
 - [Documentation Index](docs/README.md)
+- [Optional AI Operations MCP](docs/mcp-ai-operations.md) ([简体中文](docs/mcp-ai-operations.zh-CN.md))
+- [Pigsty Backup Operations](docs/pigsty-backup-operations.md) ([简体中文](docs/pigsty-backup-operations.zh-CN.md))
+- [Enterprise Architecture Readiness](docs/enterprise-architecture-readiness.md) ([简体中文](docs/enterprise-architecture-readiness.zh-CN.md))
+- [Observability Baseline](docs/observability.en.md) ([简体中文](docs/observability.md))
 - [Deployment Guide](docs/deploy-guide.md)
 - [Multi-Tenant Architecture](docs/architecture-multi-tenant.md)
 - [OAuth 2.1 / OIDC Provider](docs/oauth-oidc-provider.md)

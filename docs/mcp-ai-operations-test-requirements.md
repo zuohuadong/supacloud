@@ -1,5 +1,7 @@
 # AI 运维 MCP 测试需求
 
+[简体中文](mcp-ai-operations-test-requirements.md) | [English](mcp-ai-operations-test-requirements.en.md)
+
 ## 1. 测试目标
 
 验证可选 AI 运维能力满足以下边界：

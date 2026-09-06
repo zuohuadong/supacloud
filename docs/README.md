@@ -1,5 +1,7 @@
 # SupaCloud Documentation
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 ## Quick Links
 
 - [CLI Guide](./cli-guide.md) - User CLI vs admin CLI entrypoints and command boundaries
@@ -14,6 +16,7 @@
 
 - [Multi-Tenant Architecture](./architecture-multi-tenant.md) - Multi-tenant architecture design
 - [Multi-Tenant Management](./multi-tenant-management.md) - Management API specification, auth boundaries, and operational hardening
+- [Enterprise Architecture Readiness](./enterprise-architecture-readiness.md) - Infrastructure boundaries, SLO model, recovery acceptance, and release governance ([中文](./enterprise-architecture-readiness.zh-CN.md))
 
 ## Deployment
 
@@ -34,6 +37,10 @@
 ## Operations
 
 - [CLI Guide](./cli-guide.md) - `@supacloud/cli` and `@supacloud/admin`
+- [Optional AI Operations MCP](./mcp-ai-operations.md) - Streamable HTTP MCP server, tools, capabilities, and plan-only policy ([中文](./mcp-ai-operations.zh-CN.md))
+- [AI Operations MCP Test Requirements](./mcp-ai-operations-test-requirements.en.md) - Protocol, authorization, safety, and testing requirements ([中文](./mcp-ai-operations-test-requirements.md))
+- [Pigsty Backup Operations](./pigsty-backup-operations.md) - pgBackRest inventory verification, PITR planning, and recovery drills ([中文](./pigsty-backup-operations.zh-CN.md))
+- [Observability](./observability.en.md) - VictoriaLogs + in-process collector baseline, Prometheus metrics, and SLO definitions ([中文](./observability.md))
 - [Project Endpoint Projection](./project-endpoint-projection.md) - Fixed endpoint schema, commands, and readiness limitations
 - [PostgREST Runtime Lifecycle](./postgrest-runtime-lifecycle.md) - Component-level PostgREST desired state, pause/resume/status, and reconciliation
 - [pgredis Runtime](./pgredis-runtime.md) - Private cache data plane, control-plane APIs, Web Console operations, and safety boundaries

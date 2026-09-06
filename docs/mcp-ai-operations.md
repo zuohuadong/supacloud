@@ -1,7 +1,9 @@
 # Optional AI Operations MCP
 
+[English](mcp-ai-operations.md) | [简体中文](mcp-ai-operations.zh-CN.md)
+
 SupaCloud provides an optional, customer-facing AI operations surface over the
-新版 Streamable HTTP MCP protocol. It is disabled as a product capability
+Streamable HTTP MCP protocol. It is disabled as a product capability
 unless the customer explicitly connects an MCP client and presents an
 existing SupaCloud admin or project-scoped credential.
 
