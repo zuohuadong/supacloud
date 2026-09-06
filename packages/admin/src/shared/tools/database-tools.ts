@@ -85,7 +85,7 @@ Actions: ${allActions.join(", ")}${readOnly ? " (read-only mode)" : ""}`,
                     break;
                 }
                 case "list_tables": {
-                    const sql = `SELECT schemaname as schema, tablename as table, tableowner as owner FROM pg_tables WHERE schemaname = ANY(ARRAY[${schemas.map((s: string) => `'${s}'`).join(",")}]) ORDER BY schemaname, tablename;`;
+                    const sql = `SELECT schemaname as schema, tablename as table, tableowner as owner FROM pg_tables WHERE schemaname = ANY(ARRAY[${schemas.map((s: string) => quoteSchemaLiteral(s)).join(",")}]) ORDER BY schemaname, tablename;`;
                     const r = await execSql(sql);
                     text = r.ok ? formatTableList(r.data, schemas) : `❌ Failed (${r.status})`;
                     break;
