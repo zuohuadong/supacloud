@@ -455,7 +455,7 @@ describe("generate：client.ts 与 permissions.ts 端到端代码生成", () => 
     expect(clientCode).toContain("export function createApiClient");
     expect(clientCode).toContain("export const API_ROUTES =");
     expect(clientCode).toContain("case: {");
-    expect(clientCode).toContain("accept: (options:");
+    expect(clientCode).toContain("accept: makeRoute<");
 
     const permissionsCode = await readFile(join(fullOut, "permissions.ts"), "utf8");
     expect(permissionsCode).toContain("export const AppPermissions =");
@@ -846,6 +846,42 @@ describe("generate：client.ts 与 permissions.ts 端到端代码生成", () => 
     expect(rendered.clientCode).toContain("export type AppRoutePath = typeof API_ROUTES[number]['path'];");
     expect(rendered.clientCode).toContain("buildRouteUrl,");
     expect(rendered.clientCode).toContain("routes: API_ROUTES,");
+  });
+
+  test("renderClient does not assert unvalidated network responses to application types", () => {
+    const rendered = renderApplication(
+      {
+        modules: [{
+          name: "api",
+          className: "ApiModule",
+          file: "src/api.module.ts",
+          line: 1,
+          imports: [],
+          providers: [],
+          controllers: [{
+            className: "ApiController",
+            path: "/api",
+            scope: "request",
+            deps: [],
+            routes: [{ method: "GET", path: "/value", handler: "value" }],
+            file: "src/api.controller.ts",
+            importPath: "./api.controller",
+          }],
+          commands: [],
+          queries: [],
+          exports: [],
+        }],
+        externalTokens: [],
+      },
+      { rootDir: "/app", outDir: "/app/gen", generateClient: true },
+    );
+
+    expect(rendered.clientCode).toContain("export type ResponseDecoder<T> = (value: unknown) => T;");
+    expect(rendered.clientCode).toContain("): Promise<unknown>;");
+    expect(rendered.clientCode).toContain("value = await response.json();");
+    expect(rendered.clientCode).toContain("return decode ? decode(value) : value;");
+    expect(rendered.clientCode).not.toContain("response.json() as Promise<T>");
+    expect(rendered.clientCode).not.toContain("response.text() as Promise<T>");
   });
 
   test("treeShakeUnusedProviders prunes unreferenced root providers from compiled modules", () => {

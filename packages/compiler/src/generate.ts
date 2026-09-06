@@ -1040,13 +1040,15 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
           data: route.data,
         });
 
+        const routeParams = (route.pathParams && route.pathParams.length > 0)
+          || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0
+          ? `{ ${((route.pathParams && route.pathParams.length > 0
+            ? route.pathParams
+            : (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).map((p) => p.slice(1))))
+            .map((p) => `${p}: string | number`).join("; ")} }`
+          : "Record<string, string | number>";
         routeMethods.push(`
-    ${route.handler}: (options: {
-      params${(route.pathParams && route.pathParams.length > 0) || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0 ? "" : "?"}: ${(route.pathParams && route.pathParams.length > 0) || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0 ? `{ ${((route.pathParams && route.pathParams.length > 0 ? route.pathParams : (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).map((p) => p.slice(1)))).map((p) => `${p}: string | number`).join("; ")} }` : "Record<string, string | number>"};
-      query?: Record<string, unknown>;
-      body?: unknown;
-      headers?: Record<string, string>;
-    }${(route.pathParams && route.pathParams.length > 0) || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0 ? "" : " = {}"}) => request(${JSON.stringify(route.method)}, ${JSON.stringify(fullPath)}, options),`);
+    ${route.handler}: makeRoute<{ params${routeParams.startsWith("{") ? "" : "?"}: ${routeParams}; query?: Record<string, unknown>; body?: unknown; headers?: Record<string, string> }>(${JSON.stringify(route.method)}, ${JSON.stringify(fullPath)}),`);
       }
 
       controllerEntries.push(`
@@ -1064,6 +1066,13 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
     "  body?: unknown;",
     "  headers?: Record<string, string>;",
     "}",
+    "",
+    "export type ResponseDecoder<T> = (value: unknown) => T;",
+    "",
+    "export type RouteMethod<Options extends ClientRequestOptions = ClientRequestOptions> = {",
+    "  <T>(options: Options, decode: ResponseDecoder<T>): Promise<T>;",
+    "  (options?: Options): Promise<unknown>;",
+    "};",
     "",
     "export type HttpInterceptorFn = (",
     "  req: { method: string; url: string; headers: Record<string, string>; body?: unknown },",
@@ -1110,11 +1119,23 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
     "  const fetcher = config.fetch ?? globalThis.fetch.bind(globalThis);",
     '  const baseUrl = (config.baseUrl ?? "").replace(/\\/+$/, "");',
     "",
-    "  async function request<T = unknown>(",
+    "  async function request<T>(",
+    "    method: string,",
+    "    path: string,",
+    "    options: ClientRequestOptions,",
+    "    decode: ResponseDecoder<T>,",
+    "  ): Promise<T>;",
+    "  async function request(",
+    "    method: string,",
+    "    path: string,",
+    "    options?: ClientRequestOptions,",
+    "  ): Promise<unknown>;",
+    "  async function request<T>(",
     "    method: string,",
     "    path: string,",
     "    options: ClientRequestOptions = {},",
-    "  ): Promise<T> {",
+    "    decode?: ResponseDecoder<T>,",
+    "  ): Promise<T | unknown> {",
     "    let url = `${baseUrl}${path}`;",
     "    if (options.params) {",
     "      for (const [key, value] of Object.entries(options.params)) {",
@@ -1155,10 +1176,23 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
     "      throw new Error(`API request failed: ${method} ${path} -> ${response.status} ${errBody}`);",
     "    }",
     '    const contentType = response.headers?.get("content-type") ?? "";',
+    "    let value: unknown;",
     '    if (contentType.includes("application/json")) {',
-    "      return response.json() as Promise<T>;",
+    "      value = await response.json();",
+    "    } else {",
+    "      value = await response.text();",
     "    }",
-    "    return response.text() as Promise<T>;",
+    "    return decode ? decode(value) : value;",
+    "  }",
+    "",
+    "  function makeRoute<Options extends ClientRequestOptions>(method: string, path: string): RouteMethod<Options> {",
+    "    function route<T>(options: Options, decode: ResponseDecoder<T>): Promise<T>;",
+    "    function route(options?: Options): Promise<unknown>;",
+    "    function route<T>(options?: Options, decode?: ResponseDecoder<T>): Promise<T | unknown> {",
+    "      const requestOptions = options ?? {};",
+    "      return decode ? request(method, path, requestOptions, decode) : request(method, path, requestOptions);",
+    "    }",
+    "    return route;",
     "  }",
     "",
     "  return {",
