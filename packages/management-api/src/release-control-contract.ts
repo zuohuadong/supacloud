@@ -60,15 +60,6 @@ function nonEmptyString(value: unknown, label: string, pattern?: RegExp): string
   return value;
 }
 
-function stringArray(value: unknown, label: string, pattern: RegExp): string[] {
-  if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
-  const result = value.map((item) => nonEmptyString(item, label, pattern));
-  if (new Set(result).size !== result.length || [...result].sort().some((item, index) => item !== result[index])) {
-    throw new Error(`${label} must be unique and sorted`);
-  }
-  return result;
-}
-
 function parseComponent(value: unknown, index: number): ReleaseComponent {
   const candidate = record(value, `Release component ${index}`);
   if (candidate.kind === "migration") {
