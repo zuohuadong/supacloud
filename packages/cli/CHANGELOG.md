@@ -14,6 +14,13 @@
 * **functions:** bound release mutation response reads and report uncertain outcomes without response content
 * **cli:** honor explicit project refs consistently while preventing production cross-ref writes
 
+## [0.47.0](https://github.com/vibeunion/supacloud/compare/cli-v0.46.0...cli-v0.47.0) (2026-09-06)
+
+
+### Features
+
+* **cli:** default to permissive TLS for internal deployments ([#1170](https://github.com/vibeunion/supacloud/issues/1170)) ([2b4790c](https://github.com/vibeunion/supacloud/commit/2b4790cd3e4fc7cbcf98d7c16fb07d6ffe1d9f31))
+
 ## [0.46.0](https://github.com/vibeunion/supacloud/compare/cli-v0.45.0...cli-v0.46.0) (2026-09-05)
 
 
