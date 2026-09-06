@@ -38,7 +38,14 @@ import { closeTaskWebSocket, messageTaskWebSocket, openTaskWebSocket } from "./r
 import { isS3DataPlaneRequest } from "./utils/storage-s3-paths";
 import { studioAuthRoutes } from "./routes/studio-auth";
 import { caddyAskRoutes } from "./routes/caddy-ask";
+import { mcpRoutes } from "./mcp/server";
 import { validationErrorResponse } from "./utils/http-validation";
+import {
+  applyObservabilityHeaders,
+  beginRequestObservability,
+  recordRequestObservation,
+  renderRequestMetrics,
+} from "./utils/observability";
 import { withLogicalBackupMutationTimeoutController } from "./utils/logical-backup-request-timeout";
 import {
   CONTROL_PLANE_DATABASE_GUARD_EXIT_CODE,
@@ -275,7 +282,15 @@ async function reconcileGatewayBeforeServe(): Promise<void> {
 }
 
 const app = new Elysia({ strictPath: false })
-  .onError({ as: "global" }, ({ code, error, set }) => {
+  .onRequest(({ request, set }) => {
+    const context = beginRequestObservability(request);
+    set.headers ??= {};
+    applyObservabilityHeaders(set.headers, context);
+  })
+  .onError({ as: "global" }, ({ request, code, error, set }) => {
+    const observation = recordRequestObservation(request, Number(set.status || 500));
+    set.headers ??= {};
+    applyObservabilityHeaders(set.headers, observation.context);
     if (code === "VALIDATION") {
       return validationErrorResponse(set);
     }
@@ -376,19 +391,41 @@ const app = new Elysia({ strictPath: false })
   )
 
   // Rate limit headers + API version (Studio compatibility)
-  .onAfterHandle(({ set }) => {
+  .onAfterHandle(({ request, set }) => {
+    const observation = recordRequestObservation(request, Number(set.status || 200));
     set.headers ??= {};
+    applyObservabilityHeaders(set.headers, observation.context);
     set.headers["x-ratelimit-limit"] ??= "1000";
     set.headers["x-ratelimit-remaining"] ??= "999";
     set.headers["x-ratelimit-reset"] ??= String(
       Math.ceil(Date.now() / 60000) * 60,
     );
     set.headers["x-supabase-api-version"] = "2024-01-01";
+    if (observation.slow) {
+      logger.warn("[Observability] Slow Management API request", {
+        requestId: observation.context.requestId,
+        traceId: observation.context.traceId,
+        durationMs: Math.round(observation.durationMs),
+      });
+    }
   })
 
   // Health check (no auth required)
   .get("/health", () => ({ status: "ok", timestamp: new Date().toISOString() }))
+  .get("/metrics", ({ request, set }) => {
+    const token = process.env.SUPACLOUD_METRICS_TOKEN?.trim();
+    if (token && request.headers.get("authorization") !== `Bearer ${token}`) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
+    set.headers["content-type"] = "text/plain; version=0.0.4";
+    return renderRequestMetrics();
+  })
   .use(studioAuthRoutes)
+  // Optional stateless MCP surface for customer-selected AI operations.
+  // Keep this before API/static route registration so it is never swallowed
+  // by the SPA fallback.
+  .use(mcpRoutes)
 
   .get("/platform/projects", async ({ request, set }) => {
     const rejected = await rejectStudioCompatibilityRequest(request, set);

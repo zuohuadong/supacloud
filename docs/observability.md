@@ -53,3 +53,29 @@ Edge Function 的函数级运行日志仍写入各项目的 `.logs/<function>.lo
 ## 历史主机
 
 旧 Logflare 主机只能通过现有的迁移/清理工具显式处理。新安装调用兼容脚本时固定传入 `--skip-analytics`，不会创建、迁移或重建 Analytics 数据库或容器；不要把旧 Logflare 数据库作为 VictoriaLogs 的数据目录。
+
+## 请求关联与 SLO 指标
+
+Management API 为每个请求生成或验证以下标识，并在响应中回写：
+
+- `x-request-id`：单次请求标识
+- `x-supacloud-trace-id`：跨组件追踪标识；优先承接合法 W3C `traceparent`
+- `x-supacloud-correlation-id`：业务流程或工作流关联标识
+
+Management API 的 `/metrics` 输出 Prometheus 文本格式。默认适合本机受控
+采集；设置 `SUPACLOUD_METRICS_TOKEN` 后必须使用对应 Bearer Token。指标包括
+请求总数、5xx 数量、HTTP 状态分布和延迟桶。
+
+建议由 Pigsty/VictoriaMetrics 采集并配置以下最小 SLO：
+
+| SLI | 推荐告警条件 |
+| --- | --- |
+| Management API 5xx 比例 | 5 分钟窗口 > 1% |
+| Management API p95 延迟 | 5 分钟窗口 > 500ms |
+| Edge Function 失败率 | 5 分钟窗口 > 2% |
+| pgBackRest 最新成功备份年龄 | 超过备份周期的 2 倍 |
+| Patroni/数据库复制延迟 | 超过业务 RPO 阈值 |
+| VictoriaLogs ingestion delay | 超过 5 分钟 |
+
+告警必须关联 `x-supacloud-trace-id`、租户 project ref 和对应 runbook；
+只有 Grafana 面板而没有告警阈值和处置手册，不算 SLO 闭环。
