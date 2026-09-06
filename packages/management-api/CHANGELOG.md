@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.75.0](https://github.com/vibeunion/supacloud/compare/management-api-v0.74.0...management-api-v0.75.0) (2026-09-06)
+
+
+### Features
+
+* **management-api:** add stateless MCP AI operations ([bf007f1](https://github.com/vibeunion/supacloud/commit/bf007f14e47f9ac31a2bb99518281ee409d27a9d))
+
 ## [0.74.0](https://github.com/vibeunion/supacloud/compare/management-api-v0.73.2...management-api-v0.74.0) (2026-09-06)
 
 
