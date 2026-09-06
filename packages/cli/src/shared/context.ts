@@ -163,12 +163,13 @@ function completeProjectContext(values: Record<string, string>): boolean {
     return Boolean(core.apiUrl && core.apiToken && core.projectRef);
 }
 
-function parseInsecureTls(values: Record<string, string>, environment: string): boolean {
-    const requested = values.SUPACLOUD_TLS_INSECURE?.trim().toLowerCase();
-    if (!requested) return false;
-    if (!["1", "true", "yes"].includes(requested)) return false;
-    if (environment === "production") {
-        throw new Error("SUPACLOUD_TLS_INSECURE is forbidden for production environments");
+function parseInsecureTls(values: Record<string, string>): boolean {
+    for (const key of ["SUPACLOUD_TLS_VERIFY", "SUPACLOUD_TLS_INSECURE"]) {
+        const value = values[key]?.trim().toLowerCase();
+        if (value === undefined) continue;
+        if (["1", "true", "yes", "on"].includes(value)) return key === "SUPACLOUD_TLS_INSECURE";
+        if (["0", "false", "no", "off"].includes(value)) return key === "SUPACLOUD_TLS_VERIFY";
+        throw new Error(`${key} must be a boolean (true or false)`);
     }
     return true;
 }
@@ -227,7 +228,7 @@ export function resolveSupaCloudContext(
     const core = sourceProjectCore(source.values);
     const host = source.values.SUPACLOUD_HOST || hostFromUrl(core.apiUrl || core.supabaseUrl);
     const readOnly = env.SUPACLOUD_READ_ONLY === "true" || source.values.SUPACLOUD_READ_ONLY === "true";
-    const insecureTls = parseInsecureTls(source.values, source.environment);
+    const insecureTls = parseInsecureTls(source.values);
 
     return {
         host,

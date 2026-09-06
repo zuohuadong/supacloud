@@ -53,6 +53,7 @@ export interface HttpBinaryBody {
 const DEFAULT_TIMEOUT = 30_000;
 const MAX_POST_TIMEOUT_MS = 36 * 60_000;
 const RELEASE_MUTATION_RESPONSE_TIMEOUT = 5_000;
+
 const RELEASE_MUTATION_RESPONSE_MAX_BYTES = 64 * 1024;
 const MAX_RETRIES = 2;
 const RETRY_BASE_DELAY = 500;
@@ -144,7 +145,7 @@ async function fetchWithTimeout(
     try {
         return await fetch(url, {
             ...options,
-            ...(insecureTls ? { tls: { rejectUnauthorized: false } } : {}),
+            ...(new URL(url).protocol === "https:" ? { tls: { rejectUnauthorized: !insecureTls } } : {}),
             signal: controller.signal,
             redirect: "error",
         } as RequestInit);
@@ -344,7 +345,7 @@ export class HttpTransport {
         this.baseUrl = config.baseUrl.replace(/\/$/, "");
         this.token = config.token;
         this.apiKey = config.apiKey ?? "";
-        this.insecureTls = config.insecureTls ?? false;
+        this.insecureTls = config.insecureTls ?? true;
     }
 
     private headers(): Record<string, string> {

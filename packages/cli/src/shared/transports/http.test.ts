@@ -77,21 +77,37 @@ test("HttpTransport sends an optional application API key only when configured",
     ]);
 });
 
-test("HttpTransport opts into Bun's insecure TLS mode only when configured", async () => {
+test("HttpTransport defaults to insecure TLS and allows an explicit strict override", async () => {
     const tlsOptions: unknown[] = [];
     globalThis.fetch = (async (_input, init) => {
         tlsOptions.push((init as RequestInit & { tls?: unknown }).tls);
         return Response.json({ ok: true });
     }) as typeof fetch;
 
-    await createTransport().get("/strict");
+    await createTransport().get("/insecure");
     await new HttpTransport({
         baseUrl: "https://api.example.test",
         token: "test-token",
-        insecureTls: true,
-    }).get("/insecure");
+        insecureTls: false,
+    }).get("/strict");
 
-    expect(tlsOptions).toEqual([undefined, { rejectUnauthorized: false }]);
+    expect(tlsOptions).toEqual([{ rejectUnauthorized: false }, { rejectUnauthorized: true }]);
+});
+
+test("HttpTransport never adds TLS options to HTTP URLs", async () => {
+    const tlsOptions: unknown[] = [];
+    globalThis.fetch = (async (_input, init) => {
+        tlsOptions.push((init as RequestInit & { tls?: unknown }).tls);
+        return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    await new HttpTransport({
+        baseUrl: "http://127.0.0.1:9090",
+        token: "test-token",
+        insecureTls: true,
+    }).get("/health");
+
+    expect(tlsOptions).toEqual([undefined]);
 });
 
 function retryableNetworkError(kind: "AbortError" | "ECONNREFUSED" | "ECONNRESET"): Error {
