@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/vibeunion/supacloud/compare/compiler-v0.6.1...compiler-v0.6.2) (2026-09-06)
+
+
+### Bug Fixes
+
+* **compiler:** validate generated client responses ([#1171](https://github.com/vibeunion/supacloud/issues/1171)) ([6a4f673](https://github.com/vibeunion/supacloud/commit/6a4f6730ab9a255c8b82ca2babdbdd8941fe370c))
+
 ## [0.6.1](https://github.com/vibeunion/supacloud/compare/compiler-v0.6.0...compiler-v0.6.1) (2026-09-05)
 
 
