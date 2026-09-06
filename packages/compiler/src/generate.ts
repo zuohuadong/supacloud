@@ -1040,13 +1040,15 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
           data: route.data,
         });
 
+        const routeParams = (route.pathParams && route.pathParams.length > 0)
+          || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0
+          ? `{ ${((route.pathParams && route.pathParams.length > 0
+            ? route.pathParams
+            : (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).map((p) => p.slice(1))))
+            .map((p) => `${p}: string | number`).join("; ")} }`
+          : "Record<string, string | number>";
         routeMethods.push(`
-    ${route.handler}: (options: {
-      params${(route.pathParams && route.pathParams.length > 0) || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0 ? "" : "?"}: ${(route.pathParams && route.pathParams.length > 0) || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0 ? `{ ${((route.pathParams && route.pathParams.length > 0 ? route.pathParams : (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).map((p) => p.slice(1)))).map((p) => `${p}: string | number`).join("; ")} }` : "Record<string, string | number>"};
-      query?: Record<string, unknown>;
-      body?: unknown;
-      headers?: Record<string, string>;
-    }${(route.pathParams && route.pathParams.length > 0) || (fullPath.match(/:([a-zA-Z0-9_]+)/g) ?? []).length > 0 ? "" : " = {}"}) => request(${JSON.stringify(route.method)}, ${JSON.stringify(fullPath)}, options),`);
+    ${route.handler}: makeRoute<{ params${routeParams.startsWith("{") ? "" : "?"}: ${routeParams}; query?: Record<string, unknown>; body?: unknown; headers?: Record<string, string> }>(${JSON.stringify(route.method)}, ${JSON.stringify(fullPath)}),`);
       }
 
       controllerEntries.push(`
@@ -1066,6 +1068,11 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
     "}",
     "",
     "export type ResponseDecoder<T> = (value: unknown) => T;",
+    "",
+    "export type RouteMethod<Options extends ClientRequestOptions = ClientRequestOptions> = {",
+    "  <T>(options: Options, decode: ResponseDecoder<T>): Promise<T>;",
+    "  (options?: Options): Promise<unknown>;",
+    "};",
     "",
     "export type HttpInterceptorFn = (",
     "  req: { method: string; url: string; headers: Record<string, string>; body?: unknown },",
@@ -1176,6 +1183,16 @@ export function renderClient(graph: ApplicationGraph, _options?: GenerateOptions
     "      value = await response.text();",
     "    }",
     "    return decode ? decode(value) : value;",
+    "  }",
+    "",
+    "  function makeRoute<Options extends ClientRequestOptions>(method: string, path: string): RouteMethod<Options> {",
+    "    function route<T>(options: Options, decode: ResponseDecoder<T>): Promise<T>;",
+    "    function route(options?: Options): Promise<unknown>;",
+    "    function route<T>(options?: Options, decode?: ResponseDecoder<T>): Promise<T | unknown> {",
+    "      const requestOptions = options ?? {};",
+    "      return decode ? request(method, path, requestOptions, decode) : request(method, path, requestOptions);",
+    "    }",
+    "    return route;",
     "  }",
     "",
     "  return {",

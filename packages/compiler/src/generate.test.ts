@@ -455,7 +455,7 @@ describe("generate：client.ts 与 permissions.ts 端到端代码生成", () => 
     expect(clientCode).toContain("export function createApiClient");
     expect(clientCode).toContain("export const API_ROUTES =");
     expect(clientCode).toContain("case: {");
-    expect(clientCode).toContain("accept: (options:");
+    expect(clientCode).toContain("accept: makeRoute<");
 
     const permissionsCode = await readFile(join(fullOut, "permissions.ts"), "utf8");
     expect(permissionsCode).toContain("export const AppPermissions =");
