@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/vibeunion/supacloud/compare/compiler-v0.8.0...compiler-v0.9.0) (2026-09-06)
+
+
+### Features
+
+* complete compiler runtime roadmap ([cb4618a](https://github.com/vibeunion/supacloud/commit/cb4618aef455853f7ad408f06d67004d49155ffb))
+
 ## [0.8.0](https://github.com/vibeunion/supacloud/compare/compiler-v0.7.0...compiler-v0.8.0) (2026-09-06)
 
 

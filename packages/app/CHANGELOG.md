@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vibeunion/supacloud/compare/app-v0.7.0...app-v0.8.0) (2026-09-06)
+
+
+### Features
+
+* complete compiler runtime roadmap ([cb4618a](https://github.com/vibeunion/supacloud/commit/cb4618aef455853f7ad408f06d67004d49155ffb))
+
 ## [0.7.0](https://github.com/vibeunion/supacloud/compare/app-v0.6.1...app-v0.7.0) (2026-09-06)
 
 
