@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/vibeunion/supacloud/compare/app-v0.8.0...app-v0.8.1) (2026-09-06)
+
+
+### Documentation
+
+* add bilingual Chinese and English documentation for MCP AI operations, observability, and backup recovery ([#1187](https://github.com/vibeunion/supacloud/issues/1187)) ([d98b061](https://github.com/vibeunion/supacloud/commit/d98b0612ea6c16753251f3c45dbc86cd0968c42c))
+
 ## [0.8.0](https://github.com/vibeunion/supacloud/compare/app-v0.7.0...app-v0.8.0) (2026-09-06)
 
 
