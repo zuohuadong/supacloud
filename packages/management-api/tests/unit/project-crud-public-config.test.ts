@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
+  buildProjectResponse,
   toPublicV1ProjectCreateResponse,
   toPublicV1ProjectWithDatabaseResponse,
 } from "../../src/routes/project-crud";
+import { tenantRuntimeService } from "../../src/services/tenant-runtime.service";
 import { publicScheduledFunctionProjectConfig } from "../../src/utils/scheduled-function-config";
 
 function unsignedRoleKey(
@@ -55,6 +57,36 @@ test("project detail serialization redacts scheduled Function payloads", () => {
   expect(schedules[0]).not.toHaveProperty("headers");
   expect(responseText).not.toContain(bodySentinel);
   expect(responseText).not.toContain(headerSentinel);
+});
+
+test("project detail remains available when service status probing fails", async () => {
+  const statusProbe = spyOn(tenantRuntimeService, "getProjectServiceStatuses")
+    .mockRejectedValueOnce(new Error("runtime probe unavailable"));
+
+  try {
+    const response = await buildProjectResponse({
+      id: "project-id",
+      ref: "abcdefghijklmnopqrst",
+      name: "Project",
+      status: "active",
+      region: "local",
+      organization_id: "default",
+      created_at: new Date("2026-09-06T00:00:00.000Z"),
+      updated_at: new Date("2026-09-06T00:00:00.000Z"),
+      config: {},
+      database: { host: "db.example.test" },
+      api: { url: "https://api.example.test" },
+      studio: { url: "https://studio.example.test" },
+    }, true);
+
+    expect(response.ref).toBe("abcdefghijklmnopqrst");
+    expect(response.api).toEqual({ url: "https://api.example.test" });
+    expect(response).not.toHaveProperty("services");
+    expect(JSON.stringify(response)).not.toContain("runtime probe unavailable");
+    expect(statusProbe).toHaveBeenCalledTimes(1);
+  } finally {
+    statusProbe.mockRestore();
+  }
 });
 
 test("project detail serialization preserves redaction metadata when applied twice", () => {

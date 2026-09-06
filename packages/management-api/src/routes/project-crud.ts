@@ -281,7 +281,7 @@ function buildPitrStatus(ref: string, stanza: string, backups: BackupInfo[]) {
   };
 }
 
-async function buildProjectResponse(
+export async function buildProjectResponse(
   project: any,
   detailed = false,
 ): Promise<Record<string, unknown>> {
@@ -335,7 +335,15 @@ async function buildProjectResponse(
     connectionCount = connectionResult[0]?.count || 0;
   } catch {}
 
-  const serviceStatuses = await tenantRuntimeService.getProjectServiceStatuses(ref, project.config, "detail");
+  let serviceStatuses: Awaited<ReturnType<typeof tenantRuntimeService.getProjectServiceStatuses>> | undefined;
+  try {
+    serviceStatuses = await tenantRuntimeService.getProjectServiceStatuses(ref, project.config, "detail");
+  } catch (error: unknown) {
+    logger.warn("[ProjectCRUD] Project service status probe failed; returning project details without services", {
+      ref,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return {
     ...base,
@@ -353,7 +361,7 @@ async function buildProjectResponse(
     db_name: dbName,
     db_user: dbUser,
     connection_string: `postgresql://${dbUser}:[YOUR-PASSWORD]@${project.database?.host || "localhost"}:${(project.database as Record<string, unknown>)?.port || 5432}/${dbName}`,
-    services: serviceStatuses,
+    ...(serviceStatuses ? { services: serviceStatuses } : {}),
     anon_key: project.anon_key,
     api: project.api,
     studio: project.studio,
