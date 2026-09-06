@@ -85,7 +85,7 @@ Actions: ${allActions.join(", ")}${readOnly ? " (read-only mode)" : ""}`,
                     break;
                 }
                 case "list_tables": {
-                    const sql = `SELECT schemaname as schema, tablename as table, tableowner as owner FROM pg_tables WHERE schemaname = ANY(ARRAY[${schemas.map((s: string) => `'${s}'`).join(",")}]) ORDER BY schemaname, tablename;`;
+                    const sql = `SELECT schemaname as schema, tablename as table, tableowner as owner FROM pg_tables WHERE schemaname = ANY(ARRAY[${schemas.map((s: string) => quoteSchemaLiteral(s)).join(",")}]) ORDER BY schemaname, tablename;`;
                     const r = await execSql(sql);
                     text = r.ok ? formatTableList(r.data, schemas) : `❌ Failed (${r.status})`;
                     break;
@@ -173,7 +173,7 @@ Actions: ${allActions.join(", ")}${readOnly ? " (read-only mode)" : ""}`,
                     break;
                 }
                 case "generate_types": {
-                    const sql = `SELECT t.table_schema, t.table_name, c.column_name, c.data_type, c.is_nullable, c.column_default FROM information_schema.tables t JOIN information_schema.columns c ON t.table_name = c.table_name AND t.table_schema = c.table_schema WHERE t.table_schema = ANY(ARRAY[${schemas.map((s: string) => `'${s}'`).join(",")}]) AND t.table_type = 'BASE TABLE' ORDER BY t.table_schema, t.table_name, c.ordinal_position;`;
+                    const sql = `SELECT t.table_schema, t.table_name, c.column_name, c.data_type, c.is_nullable, c.column_default FROM information_schema.tables t JOIN information_schema.columns c ON t.table_name = c.table_name AND t.table_schema = c.table_schema WHERE t.table_schema = ANY(ARRAY[${schemas.map((s: string) => quoteSchemaLiteral(s)).join(",")}]) AND t.table_type = 'BASE TABLE' ORDER BY t.table_schema, t.table_name, c.ordinal_position;`;
                     const r = await execSql(sql);
                     text = r.ok ? generateTypeScriptTypes(r.data, schemas) : `❌ Failed (${r.status})`;
                     break;
@@ -210,6 +210,13 @@ function quoteIdentifier(value: unknown, label: string): string {
         throw new Error(`Invalid ${label} identifier`);
     }
     return `"${value}"`;
+}
+
+function quoteSchemaLiteral(value: unknown, label = "schema"): string {
+    if (typeof value !== "string" || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(value)) {
+        throw new Error(`Invalid ${label} identifier`);
+    }
+    return `'${value}'`;
 }
 
 function validateColumnDefinitions(value: unknown): string {
