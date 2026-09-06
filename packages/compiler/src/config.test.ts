@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { defineSupacloudConfig, resolveSupacloudConfig } from "./config";
+import {
+  compileOptionsFromConfig,
+  defineSupacloudConfig,
+  resolveSupacloudConfig,
+} from "./config";
 
 describe("SupaCloud default configuration", () => {
   test("provides a strict zero-config project baseline", () => {
@@ -28,6 +32,24 @@ describe("SupaCloud default configuration", () => {
       generateClient: false,
       generatePermissions: true,
       moduleBoundaryPreset: "clean-architecture",
+    });
+  });
+
+  test("passes command execution capabilities to compiler validation", () => {
+    const config = defineSupacloudConfig({
+      commandCapabilities: {
+        permission: true,
+        audit: false,
+        idempotency: false,
+        transaction: "rpc-only",
+      },
+    });
+
+    expect(compileOptionsFromConfig(config, "/workspace/app").commandCapabilities).toEqual({
+      permission: true,
+      audit: false,
+      idempotency: false,
+      transaction: "rpc-only",
     });
   });
 });
